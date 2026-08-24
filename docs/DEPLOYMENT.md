@@ -70,6 +70,18 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 DEEPSEEK_MODEL=deepseek-chat
 ```
 
+如需使用独立的 OpenAI-compatible Codex provider（例如 `gpt-5.6-sol`），使用单独的凭据变量：
+
+```bash
+LLM_PROVIDER=codex
+CODEX_API_KEY=your_key
+CODEX_BASE_URL=https://api-codex.codecmd.com/v1
+CODEX_MODEL=gpt-5.6-sol
+CODEX_REASONING_EFFORT=high
+```
+
+Codex 配置不会复用 `DEEPSEEK_*` 凭据；未设置 `LLM_PROVIDER=codex` 时仍使用 DeepSeek。
+
 ### 3.2 数据库
 
 ```bash

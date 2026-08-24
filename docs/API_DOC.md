@@ -46,6 +46,11 @@ python -m quantgpt --prefetch hs300 csi500
 | `DEEPSEEK_API_KEY` | 是 | — | DeepSeek API Key |
 | `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com/v1` | LLM API 地址 |
 | `DEEPSEEK_MODEL` | 否 | `deepseek-chat` | 模型名称 |
+| `LLM_PROVIDER` | 否 | `deepseek` | LLM provider：`deepseek` 或 `codex` |
+| `CODEX_API_KEY` | 否 | — | OpenAI-compatible Codex API Key |
+| `CODEX_BASE_URL` | 否 | `https://api-codex.codecmd.com/v1` | Codex API 地址 |
+| `CODEX_MODEL` | 否 | `gpt-5.6-sol` | Codex 模型名称 |
+| `CODEX_REASONING_EFFORT` | 否 | `high` | Codex reasoning effort |
 | `JWT_SECRET` | 是 | — | JWT 签名密钥 |
 | `QUANTGPT_CORS_ORIGINS` | 否 | `*` | CORS 允许源,逗号分隔 |
 | `QUANTGPT_ADMIN_PASSWORD` | 否 | — | 管理后台密码 |

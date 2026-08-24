@@ -208,17 +208,64 @@ def validate_parentheses(expr: str) -> str | None:
     return None
 
 
+def get_llm_settings() -> dict[str, str]:
+    """Return the selected LLM provider settings.
+
+    DeepSeek remains the default for backwards compatibility.  The Codex
+    provider uses a separate credential namespace so an OpenAI-compatible
+    endpoint cannot accidentally reuse DeepSeek credentials.
+    """
+    provider = os.environ.get("LLM_PROVIDER", "deepseek").strip().lower()
+    if provider in {"codex", "openai"}:
+        return {
+            "provider": "codex",
+            "api_key": os.environ.get("CODEX_API_KEY", ""),
+            "base_url": os.environ.get("CODEX_BASE_URL", "https://api-codex.codecmd.com/v1"),
+            "model": os.environ.get("CODEX_MODEL", "gpt-5.6-sol"),
+            "reasoning_effort": os.environ.get("CODEX_REASONING_EFFORT", "high"),
+        }
+    return {
+        "provider": "deepseek",
+        "api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
+        "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
+        "model": os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        "reasoning_effort": "",
+    }
+
+
+def llm_configured() -> bool:
+    return bool(get_llm_settings()["api_key"])
+
+
 def _get_client():
     from openai import OpenAI
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY environment variable is not set")
-    base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    return OpenAI(api_key=api_key, base_url=base_url)
+
+    settings = get_llm_settings()
+    if not settings["api_key"]:
+        key_name = "CODEX_API_KEY" if settings["provider"] == "codex" else "DEEPSEEK_API_KEY"
+        raise RuntimeError(f"{key_name} environment variable is not set")
+    return OpenAI(api_key=settings["api_key"], base_url=settings["base_url"])
 
 
 def _get_model() -> str:
-    return os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    return get_llm_settings()["model"]
+
+
+def _create_completion(client, messages: list[dict], *, temperature: float, max_tokens: int, timeout: int):
+    """Create a chat completion with provider-specific reasoning controls."""
+    settings = get_llm_settings()
+    kwargs = {
+        "model": settings["model"],
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "timeout": timeout,
+    }
+    if settings["provider"] == "codex":
+        if settings["reasoning_effort"]:
+            kwargs["reasoning_effort"] = settings["reasoning_effort"]
+    else:
+        kwargs["temperature"] = temperature
+    return client.chat.completions.create(**kwargs)
 
 
 def call_deepseek(prompt: str) -> str:
@@ -227,8 +274,8 @@ def call_deepseek(prompt: str) -> str:
     operators_doc = _expr_module_doc or _FACTOR_OPERATORS
     system = _SYSTEM_PROMPT.format(operators=operators_doc)
 
-    resp = client.chat.completions.create(
-        model=_get_model(),
+    resp = _create_completion(
+        client,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
@@ -257,8 +304,8 @@ def call_fix_expression(expression: str, error: str, prompt: str) -> str:
         f"错误信息:\n{error}"
     )
 
-    resp = client.chat.completions.create(
-        model=_get_model(),
+    resp = _create_completion(
+        client,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -300,8 +347,7 @@ def call_interpret_factor(
     backtest_summary: dict,
 ) -> dict:
     """Call LLM to interpret factor economic meaning."""
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
+    if not llm_configured():
         return {}
 
     try:
@@ -326,8 +372,8 @@ def call_interpret_factor(
     )
 
     try:
-        resp = client.chat.completions.create(
-            model=_get_model(),
+        resp = _create_completion(
+            client,
             messages=[
                 {"role": "system", "content": _INTERPRET_SYSTEM},
                 {"role": "user", "content": user_msg},

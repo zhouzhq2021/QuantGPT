@@ -12,7 +12,6 @@ Refactored with QuantaAlpha three-phase evolution architecture:
 
 import hashlib
 import logging
-import os
 import re
 import traceback
 from pathlib import Path
@@ -319,21 +318,23 @@ def _call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.9) ->
     """Call LLM and return cleaned expression string."""
     import time as _time
 
-    from openai import OpenAI
+    from .llm_service import (
+        _create_completion,
+        _get_client,
+        llm_configured,
+    )
+    from .llm_service import (
+        clean_expression as _clean_expression,
+    )
 
-    from .llm_service import clean_expression as _clean_expression
-
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
-    base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    model = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    if not llm_configured():
+        raise RuntimeError("Selected LLM provider is not configured")
+    client = _get_client()
 
     for attempt in range(3):
         try:
-            resp = client.chat.completions.create(
-                model=model,
+            resp = _create_completion(
+                client,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
