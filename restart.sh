@@ -34,6 +34,15 @@ cd frontend && npm run build --silent && cd ..
 # Start server
 echo "Starting QuantGPT on :8003..."
 mkdir -p logs
-nohup python3 -m quantgpt --transport http > logs/server.log 2>&1 &
+PYTHON_BIN="${PYTHON_BIN:-$PWD/.venv/bin/python}"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="$(command -v python3 || command -v python)"
+fi
+if [ -z "$PYTHON_BIN" ] || [ ! -x "$PYTHON_BIN" ]; then
+  echo "Python interpreter not found; create the project virtualenv first (make setup)." >&2
+  exit 1
+fi
+echo "Using Python: $PYTHON_BIN"
+setsid nohup "$PYTHON_BIN" -m quantgpt --transport http > logs/server.log 2>&1 < /dev/null &
 echo "PID: $!"
 echo "Logs: logs/server.log"

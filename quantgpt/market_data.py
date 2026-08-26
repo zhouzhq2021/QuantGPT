@@ -9,6 +9,8 @@ import logging
 import os
 import threading
 import time
+from contextlib import redirect_stdout
+from io import StringIO
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -142,7 +144,11 @@ def _baostock_login():
         raise RuntimeError("baostock is not installed")
     for attempt in range(3):
         try:
-            lg = bs.login()
+            # baostock prints its login banner to stdout.  stdout is reserved
+            # for MCP JSON-RPC when this module runs behind the stdio server,
+            # so capture the banner instead of corrupting the protocol stream.
+            with redirect_stdout(StringIO()):
+                lg = bs.login()
             if lg.error_code == "0":
                 return True
             if attempt < 2:
@@ -163,7 +169,8 @@ def _baostock_login():
 
 def _baostock_logout():
     try:
-        bs.logout()
+        with redirect_stdout(StringIO()):
+            bs.logout()
     except Exception:
         pass
 

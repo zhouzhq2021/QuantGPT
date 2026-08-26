@@ -14,6 +14,7 @@ Provides tools for Agent-driven backtest workflow:
 import asyncio
 import json
 import logging
+from pathlib import Path
 import sys
 import time
 import traceback
@@ -27,6 +28,7 @@ from .expression_parser import parse_expression
 from .fundamental_data import ALL_FUNDAMENTAL_NAMES
 from .market_data import BENCHMARK_CODES, UNIVERSES, MarketDataFetcher, fetch_benchmark_returns, get_universe
 from .mcp_task_helper import complete_mcp_task, start_mcp_task
+from .auth import _DEV_USER_ID
 from .report import generate_report
 from .wq_brain_service import (
     run_batch_simulation,
@@ -207,10 +209,33 @@ async def run_backtest(
             result["ls_returns"],
             benchmark_returns=bm_returns,
             title=f"Factor: {expression}",
+            output_dir=str(Path(__file__).resolve().parent.parent / "reports" / str(_DEV_USER_ID)),
         )
+
+        # Keep MCP-created tasks compatible with the web dashboard contract.
+        # Interpretation is best-effort and is left empty when no LLM is available.
+        interpretation = {}
+        try:
+            from .llm_service import call_interpret_factor
+            interpretation = await asyncio.to_thread(
+                call_interpret_factor,
+                expression=expression,
+                prompt=expression,
+                metrics=report_result["metrics"],
+                backtest_summary={
+                    "ic_mean": result.get("ic_mean", 0),
+                    "rank_ic_mean": result.get("rank_ic_mean", 0),
+                    "monotonicity_score": result.get("monotonicity_score", 0),
+                    "turnover": result.get("turnover", 0),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"MCP factor interpretation failed: {e}")
+        report_filename = Path(report_result["report_path"]).name
 
         _result = {
             "report_path": report_result["report_path"],
+            "report_url": f"/api/v1/reports/{report_filename}",
             "metrics": report_result["metrics"],
             "backtest_summary": {
                 "long_short_sharpe": result["long_short_sharpe"],
@@ -230,6 +255,7 @@ async def run_backtest(
             },
             "wq_brain": result.get("wq_brain", {}),
             "anti_overfit": anti_overfit_result,
+            "interpretation": interpretation,
             "params": {
                 "expression": expression,
                 "universe": universe,
@@ -250,7 +276,7 @@ async def run_backtest(
         _error_msg = str(e)
         return json.dumps({"error": str(e)})
     finally:
-        await complete_mcp_task(task_id, _result, _error_msg, expression)
+        await complete_mcp_task(task_id, _result, _error_msg, expression, report_filename if _result else None)
 
 
 @mcp.tool()

@@ -16,7 +16,10 @@ _session_factory = None
 def _get_engine():
     global _engine
     if _engine is None:
-        url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./quantgpt.db")
+        # Treat an explicitly empty value like an unset value.  The deployment
+        # template documents SQLite as the zero-configuration default, so a
+        # blank DATABASE_URL must not be passed to SQLAlchemy as an invalid URL.
+        url = os.environ.get("DATABASE_URL") or "sqlite+aiosqlite:///./quantgpt.db"
         kwargs: dict = {"echo": False}
         if "postgresql" in url:
             kwargs["pool_size"] = 5

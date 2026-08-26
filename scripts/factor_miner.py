@@ -24,6 +24,17 @@ import requests
 DEFAULT_SERVER = "http://localhost:8003"
 
 
+def _http() -> requests.Session:
+    """Create a direct local HTTP session without inherited proxy settings.
+
+    Research runs target the local QuantGPT server.  In managed environments
+    a global HTTP proxy can otherwise turn localhost requests into 502 errors.
+    """
+    session = requests.Session()
+    session.trust_env = False
+    return session
+
+
 @dataclass
 class Factor:
     expression: str
@@ -44,7 +55,7 @@ def normalize(expr: str) -> str:
 
 
 def check_health(server: str = DEFAULT_SERVER) -> dict:
-    r = requests.get(f"{server}/api/v1/health", timeout=5)
+    r = _http().get(f"{server}/api/v1/health", timeout=5)
     return r.json()
 
 
@@ -52,7 +63,7 @@ def submit_task(server: str, expression: str, params: dict) -> Optional[str]:
     payload = {"prompt": expression, **params}
     for attempt in range(6):
         try:
-            r = requests.post(f"{server}/api/v1/auto_backtest", json=payload, timeout=10)
+            r = _http().post(f"{server}/api/v1/auto_backtest", json=payload, timeout=10)
             if r.status_code == 202:
                 return r.json()["task_id"]
             if r.status_code in (429, 503):
@@ -68,7 +79,7 @@ def poll_task(server: str, task_id: str, timeout: int = 600) -> Optional[dict]:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            r = requests.get(f"{server}/api/v1/tasks/{task_id}", timeout=10)
+            r = _http().get(f"{server}/api/v1/tasks/{task_id}", timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 if data.get("status") in ("completed", "failed"):

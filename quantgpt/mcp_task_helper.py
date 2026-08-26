@@ -52,6 +52,7 @@ async def complete_mcp_task(
     result: dict | None = None,
     error: str | None = None,
     expression: str | None = None,
+    report_filename: str | None = None,
 ):
     task = tasks.get(task_id)
     if not task:
@@ -88,6 +89,6 @@ async def complete_mcp_task(
             task["result"] = result
 
     try:
-        await persist_task_to_db_async(task_id, _DEV_USER_ID_STR, task)
+        await persist_task_to_db_async(task_id, _DEV_USER_ID_STR, task, report_filename)
     except Exception as e:
         logger.error(f"[{task_id}] MCP task persist error: {e}")
