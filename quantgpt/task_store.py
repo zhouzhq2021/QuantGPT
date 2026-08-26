@@ -130,7 +130,7 @@ def sanitize_task_response(task_dict: dict) -> dict:
 # ---- DB persistence helpers ----
 
 REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
-SAFE_FILENAME_RE = re.compile(r"^backtest_report_[\w]+\.html$")
+SAFE_FILENAME_RE = re.compile(r"^(?:backtest|wq)_report_[\w]+\.html$")
 
 
 async def _persist_task_impl(task_id: str, user_id: str, task_data: dict, report_filename: str | None = None):

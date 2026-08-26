@@ -6,6 +6,7 @@ import pytest
 
 from quantgpt.task_store import (
     CancelledException,
+    SAFE_FILENAME_RE,
     _rate_buckets,
     active_task_count,
     check_cancelled,
@@ -16,6 +17,19 @@ from quantgpt.task_store import (
     tasks,
     validate_sse_ticket,
 )
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["backtest_report_20260826_120000.html", "wq_report_20260826_120000_123456.html"],
+)
+def test_safe_report_filename_accepts_supported_reports(filename):
+    assert SAFE_FILENAME_RE.fullmatch(filename)
+
+
+@pytest.mark.parametrize("filename", ["../wq_report_x.html", "report.html", "wq_report_x.htm"])
+def test_safe_report_filename_rejects_unsafe_names(filename):
+    assert not SAFE_FILENAME_RE.fullmatch(filename)
 
 
 class TestRateLimiter:
