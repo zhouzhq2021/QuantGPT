@@ -4,6 +4,7 @@ import { useColorMode } from "../contexts/ColorModeContext";
 import { authFetch } from "../api/client";
 import { getReportUrl } from "../api/client";
 import RobustnessCard from "./RobustnessCard";
+import { fetchFactors } from "../api/factorLibrary";
 import type { Task } from "../types/backtest";
 
 interface Stats {
@@ -69,6 +70,7 @@ export default function ResearchDashboard() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>("all");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [wqBExpressions, setWqBExpressions] = useState<Set<string>>(new Set());
   const pageSize = 20;
 
   const loadStats = useCallback(async () => {
@@ -93,6 +95,14 @@ export default function ResearchDashboard() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadTasks(); }, [loadTasks]);
+  useEffect(() => {
+    fetchFactors().then((factors) => {
+      const expressions = factors
+        .filter((f) => f.tags?.includes("B-rating") || /WQ.*B级/.test(f.name || "") || /WQ.*B级/.test(f.note || ""))
+        .map((f) => f.expression);
+      setWqBExpressions(new Set(expressions));
+    }).catch(() => {});
+  }, []);
 
   const hasActiveTasks = tasks.some((t) => t.status !== "completed" && t.status !== "failed");
   useEffect(() => {
@@ -178,7 +188,11 @@ export default function ResearchDashboard() {
   const getExpression = (task: Task) => task.expression || task.result?.params?.expression || (task.params as unknown as Record<string, unknown>)?.expression as string || "—";
   const getPrompt = (task: Task) => (task.params as unknown as Record<string, unknown>)?.prompt as string || task.result?.llm?.prompt || "—";
   const getTag = (task: Task) => (task.params as unknown as Record<string, unknown>)?.tag as string || "";
-  const getRating = (task: Task) => task.result?.interpretation?.rating || (task.result?.backtest_summary as unknown as Record<string, unknown>)?.wq_rating as string || "";
+  const getRating = (task: Task) => {
+    const expression = getExpression(task);
+    if (wqBExpressions.has(expression)) return "B";
+    return task.result?.interpretation?.rating || (task.result?.backtest_summary as unknown as Record<string, unknown>)?.wq_rating as string || "";
+  };
 
   const thClass = `text-left px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${isDark ? "text-gray-500" : "text-gray-400"}`;
   const thCenter = `text-center px-5 py-3.5 text-xs font-semibold uppercase tracking-wider ${isDark ? "text-gray-500" : "text-gray-400"}`;
@@ -395,6 +409,9 @@ export default function ResearchDashboard() {
                 {statusBadge(selectedTask.status)}
                 {getRating(selectedTask) && (
                   <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${isDark ? ratingColorDark(getRating(selectedTask)) : ratingColor(getRating(selectedTask))}`}>{getRating(selectedTask)}</span>
+                )}
+                {wqBExpressions.has(getExpression(selectedTask)) && (
+                  <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${isDark ? "bg-sky-500/10 text-sky-400 border-sky-500/30" : "bg-sky-50 text-sky-700 border-sky-200"}`}>WQ B级模拟</span>
                 )}
               </div>
               {selectedTask.error && (
