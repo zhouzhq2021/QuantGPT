@@ -919,6 +919,17 @@ class ExpressionParser:
             elif ch == ')':
                 depth -= 1
             elif depth == 0 and i > 0 and expr[i:i + op_len] == op:
+                # A sign in a scientific-notation literal is part of the
+                # number, not a binary arithmetic operator (for example
+                # ``1e-8`` or ``2E+10``).
+                if (
+                    op in ('+', '-')
+                    and expr[i - 1] in ('e', 'E')
+                    and i + 1 < len(expr)
+                    and expr[i + 1].isdigit()
+                ):
+                    i += 1
+                    continue
                 if op_len == 1 and ch in '<>=!':
                     # Single-char op: skip if it's part of a two-char operator
                     next_ch = expr[i + 1] if i + 1 < len(expr) else ''

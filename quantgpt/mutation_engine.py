@@ -53,11 +53,12 @@ class MutationEngine:
     """Diagnose factor failure modes and build targeted mutation prompts."""
 
     def __init__(self, expression: str, metrics: dict, score: float,
-                 anti_overfit: dict | None = None):
+                 anti_overfit: dict | None = None, target_mode: str = "local"):
         self.expression = expression
         self.metrics = metrics
         self.score = score
         self.anti_overfit = anti_overfit
+        self.target_mode = target_mode
         self.backtest = metrics.get("backtest_summary", {})
         self.report = metrics.get("report_metrics", {})
 
@@ -125,7 +126,7 @@ class MutationEngine:
         if operators_doc:
             sys_parts.append(operators_doc)
             sys_parts.append("")
-        sys_parts.extend([
+        diversity_rules = [
             "## 输出格式要求（必须严格遵守）",
             "只返回一个因子表达式，不要任何解释、分析或推理过程。",
             "不要使用 markdown 代码块、反引号或引号包裹。",
@@ -138,9 +139,18 @@ class MutationEngine:
             "## 多样性要求",
             "- 新表达式必须与当前表达式结构不同",
             "- 禁止仅修改常数或窗口参数的微小变化",
-            "- 鼓励使用非线性变换（tanh, sigmoid, power）",
             "- 鼓励组合多个信号源（量价交互、动量+波动等）",
-        ])
+        ]
+        if self.target_mode == "wq":
+            diversity_rules.extend([
+                "- 仅使用 WQ FASTEXPR 兼容算子",
+                "- 非线性变换使用 sign(x) * power(abs(x), p)，不得使用 tanh、sigmoid、exp、sign_power",
+                "- 衰减算子使用 ts_decay_linear，不得使用 decay_linear",
+                "- 不得使用 ts_shift、ts_std 或本地财务字段",
+            ])
+        else:
+            diversity_rules.append("- 鼓励使用非线性变换（tanh, sigmoid, power）")
+        sys_parts.extend(diversity_rules)
         system_prompt = "\n".join(sys_parts)
 
         user_parts = [
@@ -179,11 +189,17 @@ class MutationEngine:
 
         elif strategy == MutationStrategy.MUTATE_NONLINEAR:
             user_parts.append("## 突变指令: 引入非线性变换")
-            user_parts.append("当前因子仅使用线性运算。请引入非线性变换增强表达能力：")
-            user_parts.append("- tanh(x): 压缩极端值，增强鲁棒性")
-            user_parts.append("- power(x, 0.5) 或 sign_power(x, 0.5): 弱化极端值影响")
-            user_parts.append("- sigmoid(x): S型映射，适合二值化信号")
-            user_parts.append("- 组合示例: rank(tanh(ts_delta(close, 20) / ts_std(close, 20)))")
+            if self.target_mode == "wq":
+                user_parts.append("当前因子仅使用线性运算。请使用 WQ 兼容的非线性结构增强表达能力：")
+                user_parts.append("- sign(x) * power(abs(x), 0.5): 保留方向并压缩极端值")
+                user_parts.append("- log(abs(x) + 1): 对重尾信号做对数压缩")
+                user_parts.append("- 禁止使用 tanh、sigmoid、exp、sign_power、ts_std、ts_shift")
+            else:
+                user_parts.append("当前因子仅使用线性运算。请引入非线性变换增强表达能力：")
+                user_parts.append("- tanh(x): 压缩极端值，增强鲁棒性")
+                user_parts.append("- power(x, 0.5) 或 sign_power(x, 0.5): 弱化极端值影响")
+                user_parts.append("- sigmoid(x): S型映射，适合二值化信号")
+                user_parts.append("- 组合示例: rank(tanh(ts_delta(close, 20) / ts_std(close, 20)))")
 
         elif strategy == MutationStrategy.MUTATE_INTERACTION:
             user_parts.append("## 突变指令: 组合多信号源")

@@ -91,6 +91,21 @@ class TestBuildMutationPrompt:
             assert len(sys_p) > 100
             assert len(user_p) > 100
 
+    def test_wq_target_uses_compatible_nonlinear_prompt(self):
+        engine = MutationEngine(
+            expression="ts_mean(close, 20)",
+            metrics={
+                "backtest_summary": {"ic_mean": 0.02, "ic_ir": 0.8},
+                "report_metrics": {},
+            },
+            score=35,
+            target_mode="wq",
+        )
+        sys_p, user_p = engine.build_mutation_prompt()
+        assert "ts_decay_linear" in sys_p
+        assert "禁止使用 tanh" in user_p
+        assert "sign(x) * power(abs(x), 0.5)" in user_p
+
 
 class TestHelpers:
     def test_count_nesting(self):

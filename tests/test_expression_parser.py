@@ -56,6 +56,21 @@ class TestNumericLiteral:
         result = fn(sample_df)
         assert np.allclose(result, 3.14)
 
+    @pytest.mark.parametrize(
+        ("expression", "expected"),
+        [("1e-8", 1e-8), ("2E+3", 2000.0)],
+    )
+    def test_scientific_notation(self, sample_df, expression, expected):
+        result = parse_expression(expression)(sample_df)
+        assert np.allclose(result, expected)
+
+    def test_scientific_notation_in_arithmetic(self, sample_df):
+        result = parse_expression("close / (high - low + 1e-8)")(sample_df)
+        expected = sample_df["close"] / (
+            sample_df["high"] - sample_df["low"] + 1e-8
+        )
+        assert np.allclose(result, expected)
+
 
 class TestArithmetic:
     def test_addition(self, sample_df):

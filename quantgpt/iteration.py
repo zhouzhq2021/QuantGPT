@@ -142,6 +142,23 @@ _FACTOR_CATEGORIES = [
     ("Conditional", "rank(where(ts_rank(volume, 20) > 0.7, ts_delta(close, 10) / close, 0))"),
 ]
 
+_WQ_FACTOR_CATEGORIES = [
+    ("Momentum", "rank(ts_delta(close, 20) / close)"),
+    ("Reversal", "-1 * rank(ts_rank(close / vwap, 60))"),
+    ("Volume", "rank(ts_sum(log(volume / adv20), 20))"),
+    ("Correlation", "rank(ts_corr(rank(close), rank(volume), 20))"),
+    ("MeanReversion", "-1 * rank(ts_av_diff(close, 20) / vwap)"),
+    ("DecayWeighted", "-1 * rank(ts_decay_linear(close / vwap, 10))"),
+    ("Interaction", "rank(ts_corr(close, volume, 20)) * rank(ts_delta(close, 10) / close)"),
+]
+
+
+def _is_wq_direction(direction: str | None) -> bool:
+    if not direction:
+        return False
+    lowered = direction.lower()
+    return any(token in lowered for token in ("worldquant", "wq", "fastexpr"))
+
 _SYSTEM_PROMPT_TEMPLATE = """你是一个量化因子表达式优化专家。
 
 {operators_doc}
@@ -162,6 +179,17 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个量化因子表达式优化专家。
 ## 复杂度限制
 - 函数嵌套层数不能超过 10 层
 - 表达式总长度不能超过 500 个字符
+
+## WorldQuant 目标约束
+当用户指定 WorldQuant/WQ/FASTEXPR 方向时，以远端兼容性优先：
+- 可使用 rank, zscore, scale, abs, sign, log, sqrt, power, max, min,
+  ts_mean, ts_max, ts_min, ts_sum, ts_delta, ts_rank, ts_argmax,
+  ts_argmin, ts_decay_linear, product, ts_av_diff, ts_corr, ts_cov, where
+- 不使用本地专用算子 tanh, sigmoid, exp, ts_zscore, clip, ema, sma,
+  wma, rsi, macd, obv, atr, boll_upper, boll_lower, boll_mid
+- 不使用已知远端拒绝的 ts_shift, ts_std, sign_power
+- 不凭空引入本地财务字段；优先使用 close, open, high, low, volume,
+  vwap, returns, adv20 等可直接提交字段
 """
 
 
@@ -171,12 +199,14 @@ def _build_explore_prompt(
     task_id: str, direction: str | None,
 ) -> str:
     """Build user prompt for EXPLORE strategy (try completely different approach)."""
-    # Select rotated category examples
+    # Select rotated category examples. WQ-targeted evolution must not seed
+    # the LLM with local-only operators from the general category catalogue.
+    categories = _WQ_FACTOR_CATEGORIES if _is_wq_direction(direction) else _FACTOR_CATEGORIES
     seed_str = f"{task_id}:{iteration_index}"
     h = int(hashlib.md5(seed_str.encode()).hexdigest(), 16)
-    indices = [(h >> (i * 3)) % 1000 for i in range(len(_FACTOR_CATEGORIES))]
-    ranked = sorted(range(len(_FACTOR_CATEGORIES)), key=lambda i: indices[i])
-    selected = [_FACTOR_CATEGORIES[i] for i in ranked[:5]]
+    indices = [(h >> (i * 3)) % 1000 for i in range(len(categories))]
+    ranked = sorted(range(len(categories)), key=lambda i: indices[i])
+    selected = [categories[i] for i in ranked[:5]]
 
     parts = [
         f"当前因子: {expression}",
@@ -438,7 +468,12 @@ def generate_iteration_candidates(
                     if t["expression"] == base_expr:
                         base_metrics = t.get("metrics", parent_metrics)
                         break
-                engine = MutationEngine(base_expr, base_metrics, traj_metrics.best_score)
+                engine = MutationEngine(
+                    base_expr,
+                    base_metrics,
+                    traj_metrics.best_score,
+                    target_mode="wq" if _is_wq_direction(direction) else "local",
+                )
                 _, user_prompt = engine.build_mutation_prompt(_FACTOR_OPERATORS)
 
                 # Append anti-repeat and direction

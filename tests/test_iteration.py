@@ -1,7 +1,11 @@
 """Tests for iteration module — compute_factor_score."""
 
 
-from quantgpt.iteration import compute_factor_score, is_duplicate_expression
+from quantgpt.iteration import (
+    _build_explore_prompt,
+    compute_factor_score,
+    is_duplicate_expression,
+)
 
 
 class TestComputeFactorScore:
@@ -131,3 +135,13 @@ class TestIsDuplicateExpression:
 
     def test_empty_existing(self):
         assert not is_duplicate_expression("rank(close)", [])
+
+
+class TestWQEvolutionPrompt:
+    def test_explore_examples_are_wq_compatible(self):
+        prompt = _build_explore_prompt(
+            "rank(close)", 40, {}, [], 0, "task", "WorldQuant FASTEXPR",
+        )
+        assert "ts_decay_linear" in prompt
+        for unsupported in ("ts_shift", "ts_std", "sign_power", "tanh(", "atr("):
+            assert unsupported not in prompt
