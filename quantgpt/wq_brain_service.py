@@ -130,6 +130,41 @@ def run_single_simulation(
         "simulation_id": result.get("simulation_id"),
     }
     out.update(_build_wq_result_block(m["sharpe"], m["fitness"], m["returns"], m["turnover"], grade))
+
+    if user_id:
+        try:
+            from pathlib import Path
+
+            from .llm_service import call_interpret_factor
+            from .report import generate_wq_summary_report
+
+            interpretation = call_interpret_factor(
+                expression=expression,
+                prompt="解读 WorldQuant BRAIN 因子及其真实模拟结果",
+                metrics={
+                    "sharpe": m["sharpe"] or 0,
+                    "cagr": m["returns"] or 0,
+                    "max_drawdown": safe_float(is_data.get("drawdown")) or 0,
+                },
+                backtest_summary={
+                    "ic_mean": 0,
+                    "rank_ic_mean": 0,
+                    "monotonicity_score": 0,
+                    "turnover": m["turnover"] or 0,
+                },
+            )
+            interpretation["rating"] = grade
+            interpretation["rating_reason"] = f"WQ BRAIN Fitness {m['fitness']}"
+            out["interpretation"] = interpretation
+
+            report_dir = Path(__file__).resolve().parent.parent / "reports" / user_id
+            report = generate_wq_summary_report(
+                expression, out, interpretation=interpretation,
+                output_dir=str(report_dir),
+            )
+            out["report_url"] = f"/api/v1/reports/{Path(report['report_path']).name}"
+        except Exception as exc:
+            logger.warning("WQ report/interpretation generation failed: %s", exc)
     return out
 
 

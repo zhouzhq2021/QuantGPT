@@ -4,6 +4,8 @@ https://github.com/Miasyster/QuantGPT
 """
 
 import logging
+import html as html_lib
+import json
 
 import matplotlib
 
@@ -15,6 +17,79 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def generate_wq_summary_report(
+    expression: str,
+    result: dict,
+    interpretation: dict | None = None,
+    output_dir: str | None = None,
+) -> dict:
+    """Generate an auditable HTML summary for a WQ BRAIN simulation.
+
+    WQ does not expose the daily return series needed by QuantStats, so this
+    report records the authoritative IS metrics, platform checks, settings,
+    and the real LLM analysis instead of fabricating a local equity curve.
+    """
+    output_path = Path(output_dir) if output_dir else (_PROJECT_ROOT / "reports")
+    output_path.mkdir(parents=True, exist_ok=True)
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S_%f")
+    report_path = output_path / f"wq_report_{timestamp}.html"
+
+    esc = lambda value: html_lib.escape(str(value if value is not None else ""))
+    metrics = result.get("wq_brain", {}) or {}
+    checks = (result.get("is_metrics", {}) or {}).get("checks", []) or []
+    settings = result.get("settings", {}) or {}
+    analysis = interpretation or result.get("interpretation", {}) or {}
+
+    metric_rows = "".join(
+        f"<tr><th>{esc(label)}</th><td>{esc(value)}</td></tr>"
+        for label, value in [
+            ("Alpha ID", result.get("alpha_id")),
+            ("WQ Rating", metrics.get("wq_rating")),
+            ("Sharpe", metrics.get("wq_sharpe")),
+            ("Fitness", metrics.get("wq_fitness")),
+            ("Returns", metrics.get("wq_returns")),
+            ("Turnover", metrics.get("wq_turnover")),
+        ]
+    )
+    check_rows = "".join(
+        "<tr>"
+        f"<td>{esc(item.get('name'))}</td>"
+        f"<td class='{esc(str(item.get('result', '')).lower())}'>{esc(item.get('result'))}</td>"
+        f"<td>{esc(item.get('value'))}</td>"
+        f"<td>{esc(item.get('limit'))}</td>"
+        "</tr>"
+        for item in checks
+    )
+    analysis_blocks = "".join(
+        f"<h3>{esc(key.replace('_', ' ').title())}</h3><p>{esc(value)}</p>"
+        for key, value in analysis.items()
+        if key != "suggestions" and value not in (None, "", [])
+    )
+    suggestions = analysis.get("suggestions", [])
+    suggestion_html = "".join(f"<li>{esc(item)}</li>" for item in suggestions)
+
+    document = f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorldQuant BRAIN Factor Report</title>
+<style>
+body{{font-family:system-ui,sans-serif;max-width:1080px;margin:0 auto;padding:32px;color:#172033;background:#f7f9fc}}
+section{{background:white;border:1px solid #e4e9f2;border-radius:12px;padding:22px;margin:18px 0}}
+code,pre{{white-space:pre-wrap;word-break:break-word;background:#f1f4f9;padding:10px;border-radius:8px;display:block}}
+table{{width:100%;border-collapse:collapse}}th,td{{text-align:left;border-bottom:1px solid #e8ecf3;padding:9px}}
+.pass{{color:#17803d}}.fail{{color:#bd2525}}.warning{{color:#9a6700}}h1,h2,h3{{color:#111827}}
+</style></head><body>
+<h1>WorldQuant BRAIN Factor Report</h1>
+<section><h2>Expression</h2><code>{esc(expression)}</code></section>
+<section><h2>Authoritative WQ Metrics</h2><table>{metric_rows}</table></section>
+<section><h2>Platform Checks</h2><table><thead><tr><th>Check</th><th>Result</th><th>Value</th><th>Limit</th></tr></thead><tbody>{check_rows}</tbody></table></section>
+<section><h2>LLM Analysis</h2>{analysis_blocks}<ul>{suggestion_html}</ul></section>
+<section><h2>Simulation Settings</h2><pre>{esc(json.dumps(settings, ensure_ascii=False, indent=2))}</pre></section>
+</body></html>"""
+    report_path.write_text(document, encoding="utf-8")
+    logger.info("WQ report saved: %s", report_path)
+    return {"report_path": str(report_path)}
 
 
 def generate_report(
