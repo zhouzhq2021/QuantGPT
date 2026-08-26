@@ -146,6 +146,7 @@ export default function App() {
         expression: expr,
         metrics: activeTask.result.metrics as unknown as Record<string, unknown>,
         backtest_summary: activeTask.result.backtest_summary as unknown as Record<string, unknown>,
+        interpretation: activeTask.result.interpretation as unknown as Record<string, unknown> | undefined,
         params: activeTask.result.params as unknown as Record<string, unknown>,
         report_url: activeTask.result.report_url,
       });
