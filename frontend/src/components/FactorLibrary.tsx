@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Star, Trash2, ExternalLink } from "lucide-react";
+import { Star, Trash2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { useColorMode } from "../contexts/ColorModeContext";
 import type { SavedFactor } from "../api/factorLibrary";
 import { fetchFactors, deleteFactor } from "../api/factorLibrary";
@@ -16,6 +16,7 @@ function FactorItem({
   factor: SavedFactor;
   onDelete: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const m = factor.metrics;
   const bs = factor.backtest_summary as Record<string, number> | null;
   const { isDark, positiveClass, negativeClass } = useColorMode();
@@ -24,9 +25,12 @@ function FactorItem({
     <div className={`group rounded-lg border border-gray-150 ${isDark ? "bg-gray-900" : "bg-white"} px-3 py-2.5 hover:shadow-sm transition-shadow`}>
       {/* Expression — single line truncated */}
       <div className="flex items-center gap-2 min-w-0">
+        <button type="button" onClick={() => setExpanded((v) => !v)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <code className={`text-xs ${isDark ? "text-amber-400" : "text-blue-700"} font-mono truncate flex-1`} title={factor.expression}>
           {factor.expression}
         </code>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-gray-400" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" />}
+        </button>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           {factor.report_url && (
             <a
@@ -71,6 +75,21 @@ function FactorItem({
         <div className={`mt-2 rounded-md px-2 py-1.5 text-[11px] ${isDark ? "bg-gray-800 text-gray-300" : "bg-blue-50 text-gray-600"}`}>
           <span className="font-medium">AI Analysis：</span>
           {String(factor.interpretation.conclusion || factor.interpretation.logic || "")}
+        </div>
+      )}
+      {expanded && factor.interpretation && (
+        <div className={`mt-2 space-y-1.5 rounded-md border px-2.5 py-2 text-[11px] ${isDark ? "border-gray-700 bg-gray-800/70 text-gray-300" : "border-blue-100 bg-blue-50/50 text-gray-600"}`}>
+          {(["logic", "source", "guidance", "risk", "conclusion"] as const).map((key) => factor.interpretation?.[key] ? (
+            <p key={key}><span className="font-medium">{({logic:"因子逻辑", source:"收益来源", guidance:"交易指导", risk:"失效风险", conclusion:"核心结论"} as Record<string,string>)[key]}：</span>{String(factor.interpretation[key])}</p>
+          ) : null)}
+          {Array.isArray(factor.interpretation.suggestions) && factor.interpretation.suggestions.length > 0 && (
+            <p><span className="font-medium">改进建议：</span>{factor.interpretation.suggestions.map(String).join("；")}</p>
+          )}
+          {factor.report_url && (
+            <a href={getReportUrl(factor.report_url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 pt-1 text-blue-600 hover:underline">
+              <ExternalLink className="h-3 w-3" /> 打开完整回测报告
+            </a>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
