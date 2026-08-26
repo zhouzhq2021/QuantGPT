@@ -1,9 +1,12 @@
 """Tests for iteration module — compute_factor_score."""
 
 
+import pandas as pd
+
 from quantgpt.iteration import (
     _build_explore_prompt,
     compute_factor_score,
+    generate_iteration_candidates,
     is_duplicate_expression,
 )
 
@@ -145,3 +148,37 @@ class TestWQEvolutionPrompt:
         assert "ts_decay_linear" in prompt
         for unsupported in ("ts_shift", "ts_std", "sign_power", "tanh(", "atr("):
             assert unsupported not in prompt
+
+
+class TestCandidateEvaluator:
+    def test_external_evaluator_drives_wq_candidate_score(self, monkeypatch):
+        """WQ evolution must feed its real-simulation score into trajectory."""
+        monkeypatch.setattr("quantgpt.iteration._call_llm", lambda *args, **kwargs: "rank(close)")
+        evaluated = []
+
+        def evaluate_in_wq(expression):
+            evaluated.append(expression)
+            return {
+                "expression": expression,
+                "status": "success",
+                "score": 101.0,
+                "grade": "A",
+                "is_metrics": {"fitness": 1.01},
+            }
+
+        candidates = generate_iteration_candidates(
+            parent_expression="rank(vwap)",
+            parent_metrics={"backtest_summary": {"ic_mean": 0.02, "ic_ir": 0.6}},
+            parent_score=90,
+            parent_grade="A",
+            params={},
+            market_df=pd.DataFrame(),
+            user_id="user",
+            n_candidates=1,
+            direction="WorldQuant FASTEXPR",
+            candidate_evaluator=evaluate_in_wq,
+        )
+
+        assert evaluated == ["rank(close)"]
+        assert candidates[0]["score"] == 101.0
+        assert candidates[0]["strategy_used"] == "exploit"

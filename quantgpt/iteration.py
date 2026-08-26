@@ -416,6 +416,7 @@ def generate_iteration_candidates(
     on_progress: Callable[[int, dict], None] | None = None,
     task_id: str = "",
     direction: str | None = None,
+    candidate_evaluator: Callable[[str], dict] | None = None,
 ) -> list[dict]:
     """Generate N candidate factor improvements using adaptive evolution.
 
@@ -515,8 +516,16 @@ def generate_iteration_candidates(
 
             all_expressions.append(raw_expression)
 
-            # Evaluate
-            result = _evaluate_candidate(raw_expression, params, market_df, user_id)
+            # Evaluate.  The default evaluator is the local backtest engine,
+            # while WQ iteration callers supply an evaluator backed by a real
+            # BRAIN simulation.  Keeping candidate generation and trajectory
+            # selection shared ensures the latter feeds on metrics from the
+            # actual target market instead of an unrelated local proxy.
+            result = (
+                candidate_evaluator(raw_expression)
+                if candidate_evaluator is not None
+                else _evaluate_candidate(raw_expression, params, market_df, user_id)
+            )
             result["strategy_used"] = strategy.value
             candidates.append(result)
 

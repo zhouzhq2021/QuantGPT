@@ -60,10 +60,12 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
 
     try:
         parent_task = tasks.get(parent_task_id)
+        is_wq_parent = False
         if parent_task and parent_task.get("status") == "completed":
             parent_result = parent_task.get("result", {})
             parent_expression = parent_task.get("expression", "")
-            parent_params = parent_result.get("params", {})
+            parent_params = parent_task.get("params") or parent_result.get("params", {})
+            is_wq_parent = parent_task.get("task_type") == "wq_brain_submit"
         else:
             async def _fetch_parent():
                 from ..db import _get_session_factory
@@ -96,7 +98,8 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
 
             parent_result = db_parent.result or {}
             parent_expression = db_parent.expression or ""
-            parent_params = parent_result.get("params", {})
+            parent_params = db_parent.params or parent_result.get("params", {})
+            is_wq_parent = db_parent.task_type == "wq_brain_submit"
 
         if not parent_expression:
             task["status"] = "failed"
@@ -106,28 +109,90 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
         task["status"] = "iterating"
         task["expression"] = parent_expression
 
-        stock_codes = get_universe(
-            parent_params.get("universe", "hs300"),
-            date=parent_params.get("start_date", "2023-01-01"),
-        )
-        fetcher = MarketDataFetcher()
-        market_df = fetcher.fetch_stocks(
-            stock_codes,
-            parent_params.get("start_date", "2023-01-01"),
-            parent_params.get("end_date", "2025-12-31"),
-        )
-        if market_df is None or len(market_df) == 0:
-            task["status"] = "failed"
-            task["error"] = "无法获取行情数据"
-            return
+        market_df = None
+        candidate_evaluator = None
+        wq_client = None
+        if is_wq_parent:
+            # WQ factors must be evolved against the actual WQ simulation.
+            # A local China-market proxy cannot score USA/TOP3000 expressions
+            # or validate FASTEXPR-only fields such as enterprise_value.
+            from ..wq_brain_client import get_client, is_configured
+            from ..wq_brain_service import fitness_to_grade, run_single_simulation
 
-        from ..fundamental_data import detect_fundamental_vars, enrich_market_data
-        fund_vars = detect_fundamental_vars(parent_expression)
-        if fund_vars:
-            logger.info(f"[{task_id}] iteration: enriching with fundamentals: {fund_vars}")
-            sd = parent_params.get("start_date", "2023-01-01")
-            ed = parent_params.get("end_date", "2025-12-31")
-            market_df = enrich_market_data(market_df, fund_vars, stock_codes, sd, ed)
+            account = parent_params.get("account", "primary")
+            if not is_configured(account):
+                task["status"] = "failed"
+                task["error"] = f"WQ BRAIN 未配置 (account={account})"
+                return
+            wq_client = get_client(account)
+            if not wq_client.authenticate():
+                task["status"] = "failed"
+                task["error"] = "WQ BRAIN 认证失败"
+                return
+
+            def candidate_evaluator(expression: str) -> dict:
+                simulated = run_single_simulation(
+                    wq_client,
+                    expression=expression,
+                    region=parent_params.get("region", "USA"),
+                    universe=parent_params.get("universe", "TOP3000"),
+                    delay=parent_params.get("delay", 1),
+                    decay=parent_params.get("decay", 0),
+                    neutralization=parent_params.get("neutralization", "SUBINDUSTRY"),
+                    truncation=parent_params.get("truncation", 0.08),
+                    auto_submit=False,
+                    user_id=user_id,
+                    tag=f"evolution-{task_id}",
+                )
+                if not simulated.get("ok"):
+                    return {
+                        "expression": expression,
+                        "status": "failed",
+                        "error": simulated.get("error", "WQ BRAIN simulation failed"),
+                        "score": 0,
+                    }
+
+                is_metrics = simulated.get("is_metrics", {})
+                fitness = float(is_metrics.get("fitness") or 0)
+                grade = fitness_to_grade(fitness)
+                return {
+                    "expression": expression,
+                    "status": "success",
+                    # Fitness on a 0-100 scale feeds trajectory strategy
+                    # selection; the unscaled value remains in is_metrics.
+                    "score": round(fitness * 100, 2),
+                    "grade": grade,
+                    "alpha_id": simulated.get("alpha_id"),
+                    "is_metrics": is_metrics,
+                    "oos_metrics": simulated.get("oos_metrics", {}),
+                    "settings": simulated.get("settings", {}),
+                    "interpretation": simulated.get("interpretation", {}),
+                    "report_url": simulated.get("report_url"),
+                    "metrics": simulated,
+                }
+        else:
+            stock_codes = get_universe(
+                parent_params.get("universe", "hs300"),
+                date=parent_params.get("start_date", "2023-01-01"),
+            )
+            fetcher = MarketDataFetcher()
+            market_df = fetcher.fetch_stocks(
+                stock_codes,
+                parent_params.get("start_date", "2023-01-01"),
+                parent_params.get("end_date", "2025-12-31"),
+            )
+            if market_df is None or len(market_df) == 0:
+                task["status"] = "failed"
+                task["error"] = "无法获取行情数据"
+                return
+
+            from ..fundamental_data import detect_fundamental_vars, enrich_market_data
+            fund_vars = detect_fundamental_vars(parent_expression)
+            if fund_vars:
+                logger.info(f"[{task_id}] iteration: enriching with fundamentals: {fund_vars}")
+                sd = parent_params.get("start_date", "2023-01-01")
+                ed = parent_params.get("end_date", "2025-12-31")
+                market_df = enrich_market_data(market_df, fund_vars, stock_codes, sd, ed)
 
         parent_backtest_summary = parent_result.get("backtest_summary", {})
         parent_report_metrics = parent_result.get("metrics", {})
@@ -164,6 +229,7 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
             on_progress=on_progress,
             task_id=task_id,
             direction=direction,
+            candidate_evaluator=candidate_evaluator,
         )
 
         task["candidates"] = candidates
@@ -183,6 +249,11 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
         task["status"] = "failed"
         task["error"] = f"迭代过程中发生错误: {str(e)}"
     finally:
+        if 'wq_client' in locals() and wq_client is not None:
+            try:
+                wq_client.close()
+            except Exception:
+                pass
         if "completed_at" not in task:
             import time as _time
             task["completed_at"] = _time.time()
