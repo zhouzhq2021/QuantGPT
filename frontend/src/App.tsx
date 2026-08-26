@@ -15,6 +15,7 @@ import ResearchDashboard from "./components/ResearchDashboard";
 import TabNavigation, { TABS } from "./components/TabNavigation";
 import type { MainTab } from "./components/TabNavigation";
 import AppSidebar from "./components/AppSidebar";
+import FactorLibrary from "./components/FactorLibrary";
 import { saveFactor, fetchFactors } from "./api/factorLibrary";
 import { submitCompositeBacktest } from "./api/composite";
 import type { CompositeBacktestPayload } from "./api/composite";
@@ -235,6 +236,16 @@ export default function App() {
 
           {activeTab === "comparison" && (
             <FactorComparison savedExpressions={Array.from(savedExpressions)} />
+          )}
+
+          {activeTab === "factors" && (
+            <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <h2 className={`text-base font-semibold ${isDark ? "text-gray-100" : "text-gray-900"}`}>因子库</h2>
+                <p className="mt-1 text-xs text-gray-500">查看已保存因子的指标、AI Analysis 详情和完整回测报告。</p>
+              </div>
+              <FactorLibrary />
+            </section>
           )}
 
         </main>
