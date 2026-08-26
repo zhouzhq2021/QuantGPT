@@ -70,6 +70,10 @@ def _migrate_add_columns(connection):
         connection, inspector, "submitted_alphas", "tag",
         "ALTER TABLE submitted_alphas ADD COLUMN tag VARCHAR(100)",
     )
+    _add_column_if_missing(
+        connection, inspector, "saved_factors", "interpretation",
+        "ALTER TABLE saved_factors ADD COLUMN interpretation JSON",
+    )
 
 
 def _add_column_if_missing(connection, inspector, table, column, ddl):

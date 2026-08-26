@@ -120,6 +120,7 @@ class SavedFactor(Base):
     tags = Column(JSON, nullable=True)              # 标签列表
     metrics = Column(JSON, nullable=True)           # 快照：report_metrics
     backtest_summary = Column(JSON, nullable=True)  # 快照：backtest_summary
+    interpretation = Column(JSON, nullable=True)    # LLM AI Analysis snapshot
     params = Column(JSON, nullable=True)            # 回测参数
     report_url = Column(String(500), nullable=True)
     market = Column(String(20), default="a_share", nullable=False)

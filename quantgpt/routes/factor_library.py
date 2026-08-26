@@ -23,6 +23,7 @@ class SaveFactorRequest(BaseModel):
     tags: list[str] = Field(default_factory=list)
     metrics: dict | None = None
     backtest_summary: dict | None = None
+    interpretation: dict | None = None
     params: dict | None = None
     report_url: str | None = None
 
@@ -31,6 +32,7 @@ class UpdateFactorRequest(BaseModel):
     name: str | None = None
     note: str | None = None
     tags: list[str] | None = None
+    interpretation: dict | None = None
 
 
 def _factor_to_dict(f: SavedFactor) -> dict:
@@ -43,6 +45,7 @@ def _factor_to_dict(f: SavedFactor) -> dict:
         "tags": f.tags or [],
         "metrics": f.metrics,
         "backtest_summary": f.backtest_summary,
+        "interpretation": f.interpretation,
         "params": f.params,
         "report_url": f.report_url,
         "created_at": f.created_at.isoformat() if f.created_at else None,
@@ -75,6 +78,7 @@ async def save_factor(
         tags=req.tags,
         metrics=req.metrics,
         backtest_summary=req.backtest_summary,
+        interpretation=req.interpretation,
         params=req.params,
         report_url=req.report_url,
         market="a_share",
@@ -124,6 +128,8 @@ async def update_factor(
         factor.note = req.note
     if req.tags is not None:
         factor.tags = req.tags
+    if req.interpretation is not None:
+        factor.interpretation = req.interpretation
     factor.updated_at = datetime.now(timezone.utc)
 
     await db.commit()

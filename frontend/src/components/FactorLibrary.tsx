@@ -67,6 +67,12 @@ function FactorItem({
       )}
 
       {/* Meta line */}
+      {factor.interpretation && (
+        <div className={`mt-2 rounded-md px-2 py-1.5 text-[11px] ${isDark ? "bg-gray-800 text-gray-300" : "bg-blue-50 text-gray-600"}`}>
+          <span className="font-medium">AI Analysis：</span>
+          {String(factor.interpretation.conclusion || factor.interpretation.logic || "")}
+        </div>
+      )}
       <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
         {factor.params && (
           <span>{(factor.params as Record<string, string>).universe}</span>

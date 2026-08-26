@@ -27,6 +27,7 @@ export interface SavedFactor {
   tags: string[];
   metrics: BacktestMetrics | null;
   backtest_summary: Record<string, unknown> | null;
+  interpretation: Record<string, unknown> | null;
   params: Record<string, unknown> | null;
   report_url: string | null;
   created_at: string | null;
@@ -40,6 +41,7 @@ export interface SaveFactorPayload {
   tags?: string[];
   metrics?: Record<string, unknown>;
   backtest_summary?: Record<string, unknown>;
+  interpretation?: Record<string, unknown>;
   params?: Record<string, unknown>;
   report_url?: string;
 }
