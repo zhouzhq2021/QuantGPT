@@ -26,7 +26,6 @@ from ..task_store import (
     active_task_count,
     check_rate_limit,
     cleanup_tasks,
-    main_loop,
     persist_report_to_db,
     persist_task_to_db,
     tasks,
@@ -76,7 +75,13 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
                     return r.scalar_one_or_none()
 
             db_parent = None
-            _loop = main_loop
+            # Read the loop from the module at execution time. Importing the
+            # ``main_loop`` value above captures its initial ``None`` before
+            # FastAPI's lifespan assigns the running event loop, which makes
+            # persisted parent tasks invisible to iteration worker threads.
+            from .. import task_store
+
+            _loop = task_store.main_loop
             if _loop and _loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(_fetch_parent(), _loop)
                 try:
