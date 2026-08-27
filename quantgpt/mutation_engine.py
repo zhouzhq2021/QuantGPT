@@ -37,7 +37,9 @@ _OPERATOR_REPLACEMENTS = {
     "ts_mean": ["decay_linear", "ts_sum", "ts_median"],
     "ts_std": ["ts_mean", "ts_rank", "ts_mad"],
     "ts_delta": ["ts_shift", "ts_rank"],
-    "ts_corr": ["ts_cov", "ts_rank"],
+    # ts_cov is listed in the generic operator catalogue but is rejected by
+    # the configured WQ FASTEXPR account; prefer operators accepted remotely.
+    "ts_corr": ["ts_rank"],
     "ts_rank": ["rank", "zscore"],
     "rank": ["zscore", "scale", "tanh"],
     "decay_linear": ["ts_mean", "ts_sum"],
@@ -146,7 +148,7 @@ class MutationEngine:
                 "- 仅使用 WQ FASTEXPR 兼容算子",
                 "- 非线性变换使用 sign(x) * power(abs(x), p)，不得使用 tanh、sigmoid、exp、sign_power",
                 "- 衰减算子使用 ts_decay_linear，不得使用 decay_linear",
-                "- 不得使用 ts_shift、ts_std 或本地财务字段",
+                "- 不得使用 ts_shift、ts_std、ts_cov 或本地财务字段",
             ])
         else:
             diversity_rules.append("- 鼓励使用非线性变换（tanh, sigmoid, power）")
@@ -193,7 +195,7 @@ class MutationEngine:
                 user_parts.append("当前因子仅使用线性运算。请使用 WQ 兼容的非线性结构增强表达能力：")
                 user_parts.append("- sign(x) * power(abs(x), 0.5): 保留方向并压缩极端值")
                 user_parts.append("- log(abs(x) + 1): 对重尾信号做对数压缩")
-                user_parts.append("- 禁止使用 tanh、sigmoid、exp、sign_power、ts_std、ts_shift")
+                user_parts.append("- 禁止使用 tanh、sigmoid、exp、sign_power、ts_std、ts_shift、ts_cov")
             else:
                 user_parts.append("当前因子仅使用线性运算。请引入非线性变换增强表达能力：")
                 user_parts.append("- tanh(x): 压缩极端值，增强鲁棒性")

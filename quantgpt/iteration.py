@@ -187,7 +187,7 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个量化因子表达式优化专家。
 当用户指定 WorldQuant/WQ/FASTEXPR 方向时，以远端兼容性优先：
 - 可使用 rank, zscore, scale, abs, sign, log, sqrt, power, max, min,
   ts_mean, ts_max, ts_min, ts_sum, ts_delta, ts_rank, ts_argmax,
-  ts_argmin, ts_decay_linear, product, ts_av_diff, ts_corr, ts_cov, where
+  ts_argmin, ts_decay_linear, product, ts_av_diff, ts_corr, where
 - 不使用本地专用算子 tanh, sigmoid, exp, ts_zscore, clip, ema, sma,
   wma, rsi, macd, obv, atr, boll_upper, boll_lower, boll_mid
 - 不使用已知远端拒绝的 ts_shift, ts_std, sign_power
