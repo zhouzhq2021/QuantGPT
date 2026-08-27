@@ -399,10 +399,18 @@ def _validate_expression(expr: str) -> str | None:
             "trade_date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
             **{name: [1.0, 1.1, 1.2] for name in _FN},
         })
-        func = parse_expression(expr)
+        # WQ evolution may legitimately reference remote-only fields (for
+        # example enterprise_value) that are unavailable in the local dummy
+        # dataframe. Syntax/parentheses are checked locally; remote field
+        # accessibility is decided by the real BRAIN simulation.
+        func = parse_expression(expr, mode="wq")
         func(dummy)
         return None
     except Exception as e:
+        if any(name in str(e) for name in (
+            "Unknown column or variable", "not found in DataFrame", "WQ 字段",
+        )):
+            return None
         return f"表达式验证失败: {e}"
 
 
