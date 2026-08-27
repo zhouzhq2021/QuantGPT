@@ -47,10 +47,13 @@ def compute_factor_score(
     def _clamp(v, lo, hi):
         return max(lo, min(hi, v))
 
-    ic_mean = backtest_summary.get("ic_mean", 0.0) or backtest_summary.get("rank_ic_mean", 0.0)
+    ic_mean = backtest_summary.get("ic_mean")
+    if ic_mean is None:
+        ic_mean = backtest_summary.get("rank_ic_mean")
+    ic_mean = ic_mean or 0.0
     ic_mean_score = min(abs(ic_mean) / 0.05, 1.0) * 100
 
-    ic_ir = backtest_summary.get("ic_ir", 0.0)
+    ic_ir = backtest_summary.get("ic_ir") or 0.0
     ic_ir_score = min(abs(ic_ir) / 1.0, 1.0) * 100
 
     ic_win_rate = backtest_summary.get("ic_win_rate", 0.5)

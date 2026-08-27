@@ -197,6 +197,16 @@ def _run_iteration_task(task_id: str, parent_task_id: str, user_id: str, n_candi
         parent_backtest_summary = parent_result.get("backtest_summary", {})
         parent_report_metrics = parent_result.get("metrics", {})
         parent_scoring = compute_factor_score(parent_backtest_summary, parent_report_metrics, data_days=None)
+        if is_wq_parent:
+            # WQ parents have no local IC/group-return series.  Seed the
+            # trajectory with the real BRAIN Fitness so strategy selection is
+            # aligned with the target A/B grading scale.
+            wq_fitness = (parent_result.get("is_metrics", {}) or {}).get("fitness")
+            if wq_fitness is None:
+                wq_fitness = (parent_result.get("wq_brain", {}) or {}).get("wq_fitness")
+            if wq_fitness is not None:
+                parent_scoring["score"] = round(float(wq_fitness) * 100, 2)
+                parent_scoring["grade"] = "A" if float(wq_fitness) >= 1.0 else "B" if float(wq_fitness) >= 0.5 else "C"
 
         parent_metrics = {
             "backtest_summary": parent_backtest_summary,
