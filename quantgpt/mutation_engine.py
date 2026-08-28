@@ -149,6 +149,7 @@ class MutationEngine:
                 "- 非线性变换使用 sign(x) * power(abs(x), p)，不得使用 tanh、sigmoid、exp、sign_power",
                 "- 衰减算子使用 ts_decay_linear，不得使用 decay_linear",
                 "- 不得使用 ts_shift、ts_std、ts_cov 或本地财务字段",
+                "- 不得使用 pe、pb、ps、roe、asset_turnover、yoy_ni 等账号不可用派生字段；基本面仅保留已验证的 revenue/enterprise_value",
             ])
         else:
             diversity_rules.append("- 鼓励使用非线性变换（tanh, sigmoid, power）")

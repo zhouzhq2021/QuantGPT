@@ -191,8 +191,10 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个量化因子表达式优化专家。
 - 不使用本地专用算子 tanh, sigmoid, exp, ts_zscore, clip, ema, sma,
   wma, rsi, macd, obv, atr, boll_upper, boll_lower, boll_mid
 - 不使用已知远端拒绝的 ts_shift, ts_std, sign_power
-- 不凭空引入本地财务字段；优先使用 close, open, high, low, volume,
-  vwap, returns, adv20 等可直接提交字段
+- 不使用账号已实测拒绝的派生字段 pe, pb, ps, roe, asset_turnover,
+  yoy_ni 等；基本面优先使用已验证的 revenue/enterprise_value
+- 不凭空引入本地财务字段；价量优先使用 close, open, high, low,
+  volume, vwap, returns, adv20 等可直接提交字段
 """
 
 
