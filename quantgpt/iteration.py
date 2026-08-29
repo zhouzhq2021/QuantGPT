@@ -203,12 +203,13 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个量化因子表达式优化专家。
 def _build_explore_prompt(
     expression: str, score: float, metrics: dict,
     previous_expressions: list[str], iteration_index: int,
-    task_id: str, direction: str | None,
+    task_id: str, direction: str | None, target_mode: str | None = None,
 ) -> str:
     """Build user prompt for EXPLORE strategy (try completely different approach)."""
     # Select rotated category examples. WQ-targeted evolution must not seed
     # the LLM with local-only operators from the general category catalogue.
-    categories = _WQ_FACTOR_CATEGORIES if _is_wq_direction(direction) else _FACTOR_CATEGORIES
+    effective_mode = target_mode or ("wq" if _is_wq_direction(direction) else "local")
+    categories = _WQ_FACTOR_CATEGORIES if effective_mode == "wq" else _FACTOR_CATEGORIES
     seed_str = f"{task_id}:{iteration_index}"
     h = int(hashlib.md5(seed_str.encode()).hexdigest(), 16)
     indices = [(h >> (i * 3)) % 1000 for i in range(len(categories))]
@@ -387,12 +388,38 @@ def _call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.9) ->
     raise RuntimeError("LLM call failed after 3 attempts")
 
 
-def _validate_expression(expr: str) -> str | None:
+def _validate_expression(expr: str, target_mode: str = "local") -> str | None:
     """Validate expression syntax. Returns error string or None if valid."""
     from .llm_service import validate_parentheses as _validate_parentheses
     paren_err = _validate_parentheses(expr)
     if paren_err:
         return f"括号错误: {paren_err}"
+    if target_mode == "wq":
+        # These operators/fields are present in the local parser catalogue but
+        # are rejected by the configured BRAIN account.  Reject them before a
+        # remote simulation so the LLM retry budget can repair the candidate.
+        denied_operators = (
+            "where", "ts_max", "ts_min", "ts_argmax", "ts_argmin",
+            "ts_std", "ts_shift", "ts_cov", "trade_when", "sign_power",
+            "tanh", "sigmoid", "exp", "ts_zscore", "clip", "ema", "sma",
+            "wma", "rsi", "macd", "obv", "atr", "boll_upper",
+            "boll_lower", "boll_mid", "decay_linear",
+        )
+        denied_fields = (
+            "pe", "pb", "ps", "roe", "asset_turnover", "yoy_ni",
+            "cfo_to_np", "np_margin", "gp_margin", "debt_ratio", "eps_ttm",
+            "nav", "bps", "roa", "dividend_yield",
+        )
+        for name in denied_operators:
+            if re.search(rf"\b{re.escape(name)}\s*\(", expr):
+                return f"WQ 账号实测不支持算子 '{name}'"
+        for name in denied_fields:
+            if re.search(rf"\b{re.escape(name)}\b", expr):
+                return f"WQ 账号实测不支持字段 '{name}'"
+        if re.search(r"(?:\d+(?:\.\d*)?|\.\d+)[eE][+-]?\d+", expr):
+            return "WQ 表达式禁止使用科学计数法 epsilon"
+        if re.search(r"\b0\.0{3,}\d+\b", expr):
+            return "WQ 表达式禁止使用极小 epsilon"
     try:
         from .fundamental_data import ALL_FUNDAMENTAL_NAMES as _FN
         dummy = pd.DataFrame({
@@ -449,6 +476,7 @@ def generate_iteration_candidates(
         "strategy": "parent",
     }]
     candidates: list[dict] = []
+    target_mode = "wq" if candidate_evaluator is not None or _is_wq_direction(direction) else "local"
 
     for i in range(n_candidates):
         try:
@@ -474,7 +502,7 @@ def generate_iteration_candidates(
             if strategy == EvolutionStrategy.EXPLORE:
                 user_prompt = _build_explore_prompt(
                     parent_expression, current_score, parent_metrics,
-                    all_expressions, i, task_id, direction)
+                    all_expressions, i, task_id, direction, target_mode)
 
             elif strategy in (EvolutionStrategy.EXPLOIT, EvolutionStrategy.SIMPLIFY):
                 # Use best expression as base for mutation
@@ -488,7 +516,7 @@ def generate_iteration_candidates(
                     base_expr,
                     base_metrics,
                     traj_metrics.best_score,
-                    target_mode="wq" if _is_wq_direction(direction) else "local",
+                    target_mode=target_mode,
                 )
                 _, user_prompt = engine.build_mutation_prompt(_FACTOR_OPERATORS)
 
@@ -507,11 +535,11 @@ def generate_iteration_candidates(
             raw_expression = None
             for dedup_attempt in range(4):
                 expr = _call_llm(system_prompt, user_prompt, temperature=min(temp + dedup_attempt * 0.2, 1.8))
-                err = _validate_expression(expr)
+                err = _validate_expression(expr, target_mode)
                 if err:
                     logger.warning(f"[{task_id}] candidate {i} validation failed: {err}")
                     raw_expression = expr
-                    break
+                    continue
                 if not is_duplicate_expression(expr, all_expressions):
                     raw_expression = expr
                     break
@@ -520,7 +548,7 @@ def generate_iteration_candidates(
                 raw_expression = expr  # last attempt even if duplicate
 
             # Validate
-            err = _validate_expression(raw_expression)
+            err = _validate_expression(raw_expression, target_mode)
             if err:
                 result = {"expression": raw_expression, "status": "failed", "error": err, "score": 0}
                 candidates.append(result)
