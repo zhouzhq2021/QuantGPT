@@ -282,7 +282,11 @@ class WQBrainClient:
             for attempt in range(3):
                 try:
                     r = s.post(f"{API_BASE}/alphas/{alpha_id}/submit")
-                    body = r.text[:500]
+                    # Preserve the complete BRAIN rejection payload.  The
+                    # check list contains SELF/PROD/POWER_POOL correlation
+                    # values needed to decide whether a candidate is worth
+                    # mutating; truncating at 500 chars hid the actual gate.
+                    body = r.text[:10000]
                     logger.info(f"Submit {alpha_id}: HTTP {r.status_code}, body={body}")
                     break
                 except (requests.ConnectionError, requests.Timeout) as e:
@@ -422,4 +426,3 @@ class WQBrainClient:
         if r.status_code in (200, 204):
             return {"ok": True, "detail": f"Alpha {alpha_id} restored"}
         return {"ok": False, "detail": f"Unhide failed: {r.status_code} {r.text[:200]}"}
-
