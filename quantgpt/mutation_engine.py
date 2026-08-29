@@ -149,7 +149,9 @@ class MutationEngine:
                 "- 非线性变换使用 sign(x) * power(abs(x), p)，不得使用 tanh、sigmoid、exp、sign_power",
                 "- 衰减算子使用 ts_decay_linear，不得使用 decay_linear",
                 "- 不得使用 ts_shift、ts_std、ts_cov 或本地财务字段",
-                "- 不得使用 pe、pb、ps、roe、asset_turnover、yoy_ni 等账号不可用派生字段；基本面仅保留已验证的 revenue/enterprise_value",
+                "- 不得使用 ts_max、ts_min、ts_argmax、ts_argmin、where 或 trade_when",
+                "- 分母中不得添加 0.0001、1e-8、1e-10 等 epsilon；WQ 远端会自行处理零值",
+                "- 不得使用 pe、pb、ps、roe、asset_turnover、yoy_ni 等账号不可用派生字段；基本面仅保留已验证的 revenue/enterprise_value 或 sales/assets",
             ])
         else:
             diversity_rules.append("- 鼓励使用非线性变换（tanh, sigmoid, power）")

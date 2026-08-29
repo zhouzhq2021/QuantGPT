@@ -4,6 +4,7 @@
 import pandas as pd
 
 from quantgpt.iteration import (
+    _SYSTEM_PROMPT_TEMPLATE,
     _build_explore_prompt,
     compute_factor_score,
     generate_iteration_candidates,
@@ -148,6 +149,14 @@ class TestWQEvolutionPrompt:
         assert "ts_decay_linear" in prompt
         for unsupported in ("ts_shift", "ts_std", "sign_power", "tanh(", "atr("):
             assert unsupported not in prompt
+
+    def test_system_prompt_matches_verified_wq_capabilities(self):
+        prompt = _SYSTEM_PROMPT_TEMPLATE.format(operators_doc="operators")
+        assert "group_rank" in prompt
+        assert "sales/assets" in prompt
+        assert "不得添加 0.0001、1e-8、1e-10" in prompt
+        for unsupported in ("ts_max,", "ts_argmax,", "where,", "trade_when"):
+            assert unsupported in prompt
 
 
 class TestCandidateEvaluator:

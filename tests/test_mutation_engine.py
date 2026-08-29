@@ -103,6 +103,8 @@ class TestBuildMutationPrompt:
         )
         sys_p, user_p = engine.build_mutation_prompt()
         assert "ts_decay_linear" in sys_p
+        assert "不得添加 0.0001、1e-8、1e-10" in sys_p
+        assert "where 或 trade_when" in sys_p
         assert "禁止使用 tanh" in user_p
         assert "sign(x) * power(abs(x), 0.5)" in user_p
 
