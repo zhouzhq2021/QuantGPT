@@ -1,5 +1,6 @@
 """WQ BRAIN batch operations — param sweep, batch submit by ID, batch status check, finalize."""
 
+import asyncio
 import itertools
 import logging
 import os
@@ -392,11 +393,11 @@ async def wq_brain_batch_alpha_status(
         raise HTTPException(status_code=503, detail=f"WQ BRAIN 未配置 (account={account})")
 
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
 
-    result = run_check_alphas(client, req.alpha_ids)
-    client.close()
+    result = await asyncio.to_thread(run_check_alphas, client, req.alpha_ids)
+    await asyncio.to_thread(client.close)
     return result
 
 
@@ -417,10 +418,10 @@ async def wq_brain_batch_finalize(
         raise HTTPException(status_code=503, detail=f"WQ BRAIN 未配置 (account={req.account})")
 
     client = get_client(req.account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
 
-    result = _finalize_alpha_statuses(client, req.alpha_ids, user_id=str(user.id))
-    client.close()
+    result = await asyncio.to_thread(_finalize_alpha_statuses, client, req.alpha_ids, user_id=str(user.id))
+    await asyncio.to_thread(client.close)
 
     return result

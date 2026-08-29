@@ -1,5 +1,6 @@
 """WQ BRAIN API routes — submit expressions to WorldQuant BRAIN for real simulation."""
 
+import asyncio
 import logging
 import threading
 import time
@@ -117,10 +118,10 @@ async def wq_brain_user_info(account: str = "primary"):
     if not is_configured(account):
         raise HTTPException(status_code=503, detail=f"WQ BRAIN 未配置 (account={account})")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
-    info = client.get_user_info()
-    client.close()
+    info = await asyncio.to_thread(client.get_user_info)
+    await asyncio.to_thread(client.close)
     return info
 
 
@@ -135,10 +136,10 @@ async def list_platform_alphas(
     if not is_configured(account):
         raise HTTPException(status_code=503, detail=f"WQ BRAIN 未配置 (account={account})")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
-    result = run_list_alphas(client, limit=limit, offset=offset)
-    client.close()
+    result = await asyncio.to_thread(run_list_alphas, client, limit=limit, offset=offset)
+    await asyncio.to_thread(client.close)
     if not result.get("ok"):
         raise HTTPException(status_code=502, detail=result.get("error", "unknown"))
     return {"total": result["total"], "alphas": result["alphas"]}
@@ -257,11 +258,11 @@ async def submit_alpha_from_task(
     if account != "primary":
         raise HTTPException(status_code=403, detail="Alpha 提交仅允许 primary 账号，禁止从 alt 账号提交")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail=f"WQ BRAIN 认证失败 (account={account})")
 
-    submit_result = client.submit_alpha(alpha_id)
-    client.close()
+    submit_result = await asyncio.to_thread(client.submit_alpha, alpha_id)
+    await asyncio.to_thread(client.close)
     logger.info(f"[{task_id}] submit_alpha({alpha_id}) result: {submit_result}")
 
     if submit_result.get("ok"):
@@ -302,10 +303,10 @@ async def check_alpha_platform_status(
     if not is_configured(account):
         raise HTTPException(status_code=503, detail=f"WQ BRAIN 未配置 (account={account})")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail=f"WQ BRAIN 认证失败 (account={account})")
-    result = client.check_alpha_status(alpha_id)
-    client.close()
+    result = await asyncio.to_thread(client.check_alpha_status, alpha_id)
+    await asyncio.to_thread(client.close)
     return result
 
 
@@ -321,10 +322,10 @@ async def submit_alpha_by_id(
     if not is_configured(account):
         raise HTTPException(status_code=503, detail="WQ BRAIN 未配置")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail=f"WQ BRAIN 认证失败 (account={account})")
-    result = client.submit_alpha(alpha_id)
-    client.close()
+    result = await asyncio.to_thread(client.submit_alpha, alpha_id)
+    await asyncio.to_thread(client.close)
     logger.info(f"submit-by-id {alpha_id}: {result}")
     return result
 
@@ -339,10 +340,10 @@ async def delete_alpha(
     if not is_configured(account):
         raise HTTPException(status_code=503, detail="WQ BRAIN 未配置")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
-    result = client.delete_alpha(alpha_id)
-    client.close()
+    result = await asyncio.to_thread(client.delete_alpha, alpha_id)
+    await asyncio.to_thread(client.close)
     logger.info(f"delete-alpha {alpha_id}: {result}")
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("detail", "删除失败"))
@@ -359,10 +360,10 @@ async def unhide_alpha(
     if not is_configured(account):
         raise HTTPException(status_code=503, detail="WQ BRAIN 未配置")
     client = get_client(account)
-    if not client.authenticate():
+    if not await asyncio.to_thread(client.authenticate):
         raise HTTPException(status_code=502, detail="WQ BRAIN 认证失败")
-    result = client.unhide_alpha(alpha_id)
-    client.close()
+    result = await asyncio.to_thread(client.unhide_alpha, alpha_id)
+    await asyncio.to_thread(client.close)
     logger.info(f"unhide-alpha {alpha_id}: {result}")
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("detail", "恢复失败"))
