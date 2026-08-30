@@ -154,6 +154,15 @@ AUTH_DISABLED=true
 python -m quantgpt --prefetch hs300 csi500
 ```
 
+大批量基本面预热建议使用串行脚本的保守默认值（核心字段、小批次、批次间隔），避免触发数据源的请求配额：
+
+```bash
+python scripts/prewarm.py --universe hs300 --skip-market --skip-dividends \
+  --fundamental-vars core --batch-size 10 --pause 2
+```
+
+`--fundamental-vars all` 会请求全部基本面字段，可能超过免费数据源的每日请求上限，应仅在有足够配额时使用。
+
 ---
 
 ## 6. 常见问题

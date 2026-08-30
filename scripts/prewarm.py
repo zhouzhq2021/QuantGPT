@@ -6,6 +6,7 @@ Usage:
     python scripts/prewarm.py [--universe all|hs300|csi500|csi1000|csi2000]
                                [--start 2015-01-01] [--end 2025-12-31]
                                [--skip-market] [--skip-fundamentals] [--skip-dividends]
+                               [--fundamental-vars core|all|var1,var2]
 
 Run on server:
     nohup python scripts/prewarm.py > /tmp/prewarm.log 2>&1 &
@@ -35,6 +36,11 @@ END_DATE = "2025-12-31"
 
 UNIVERSES = ["hs300", "csi500", "csi1000", "csi2000"]
 BENCHMARKS = ["hs300", "zz500", "csi1000"]
+# Two APIs (operation + profit) keep a full HS300/CSI500 prewarm below the
+# provider's daily request ceiling for the default 2015-2025 date range.
+CORE_FUNDAMENTAL_VARS = {
+    "asset_turnover", "inv_turnover", "revenue", "total_share", "net_profit", "roe",
+}
 
 
 @contextmanager
@@ -98,9 +104,14 @@ def prewarm_market_data(stock_codes: list, batch_size: int = 100, pause_seconds:
             logger.error(f"Market data batch {i//batch_size + 1} failed: {e}")
 
 
-def prewarm_fundamentals(stock_codes: list, batch_size: int = 10, pause_seconds: float = 2.0):
+def prewarm_fundamentals(
+    stock_codes: list,
+    needed_vars: set[str],
+    batch_size: int = 10,
+    pause_seconds: float = 2.0,
+):
     """Cache fundamental data for all stocks."""
-    from quantgpt.fundamental_data import FundamentalDataFetcher, ALL_FUNDAMENTAL_NAMES
+    from quantgpt.fundamental_data import FundamentalDataFetcher
     from quantgpt.market_data import CACHE_ONLY, _baostock_login, _baostock_logout
     fetcher = FundamentalDataFetcher()
     total = len(stock_codes)
@@ -114,8 +125,6 @@ def prewarm_fundamentals(stock_codes: list, batch_size: int = 10, pause_seconds:
             return
         finally:
             _baostock_logout()
-    # Use all fundamental vars to ensure all columns are cached
-    needed_vars = set(ALL_FUNDAMENTAL_NAMES) - {"dividend_yield"}  # dividend handled separately
     logger.info(f"Pre-warming fundamentals for {total} stocks ({len(needed_vars)} vars)")
 
     for i in range(0, total, batch_size):
@@ -161,6 +170,11 @@ def main():
     parser.add_argument("--skip-factors", action="store_true")
     parser.add_argument("--batch-size", type=int, default=10, help="Stocks per remote batch (default: 10)")
     parser.add_argument("--pause", type=float, default=2.0, help="Seconds between remote batches (default: 2)")
+    parser.add_argument(
+        "--fundamental-vars",
+        default="core",
+        help="Comma-separated vars, or 'core' (default) / 'all'",
+    )
     args = parser.parse_args()
 
     START_DATE = args.start
@@ -179,6 +193,18 @@ def main():
         parser.error("--batch-size must be >= 1")
     if args.pause < 0:
         parser.error("--pause must be >= 0")
+
+    from quantgpt.fundamental_data import ALL_FUNDAMENTAL_NAMES, FUNDAMENTAL_VARIABLES, DERIVED_VARIABLES
+    if args.fundamental_vars == "core":
+        fundamental_vars = set(CORE_FUNDAMENTAL_VARS)
+    elif args.fundamental_vars == "all":
+        fundamental_vars = set(ALL_FUNDAMENTAL_NAMES) - {"dividend_yield"}
+    else:
+        fundamental_vars = {v.strip() for v in args.fundamental_vars.split(",") if v.strip()}
+        valid_vars = set(FUNDAMENTAL_VARIABLES) | set(DERIVED_VARIABLES)
+        unknown = fundamental_vars - valid_vars
+        if unknown:
+            parser.error(f"unknown fundamental vars: {', '.join(sorted(unknown))}")
 
     logger.info("=== QuantGPT Data Pre-warm ===")
     logger.info(f"Date range: {START_DATE} ~ {END_DATE}")
@@ -224,7 +250,7 @@ def main():
     # Step 5: Fundamental data (baostock quarterly)
     if not args.skip_fundamentals:
         logger.info("--- Step 5: Fundamental data (baostock) ---")
-        prewarm_fundamentals(stock_codes, args.batch_size, args.pause)
+        prewarm_fundamentals(stock_codes, fundamental_vars, args.batch_size, args.pause)
     else:
         logger.info("--- Step 5: Fundamental data (SKIPPED) ---")
 
