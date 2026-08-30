@@ -79,8 +79,19 @@ def prewarm_market_data(stock_codes: list, batch_size: int = 200):
 def prewarm_fundamentals(stock_codes: list, batch_size: int = 50):
     """Cache fundamental data for all stocks."""
     from quantgpt.fundamental_data import FundamentalDataFetcher, ALL_FUNDAMENTAL_NAMES
+    from quantgpt.market_data import CACHE_ONLY, _baostock_login, _baostock_logout
     fetcher = FundamentalDataFetcher()
     total = len(stock_codes)
+    if not CACHE_ONLY:
+        # Validate the source once. Without this guard every batch would repeat
+        # the same login failure and make a large prewarm look stuck.
+        try:
+            _baostock_login()
+        except Exception as e:
+            logger.error(f"Fundamental source unavailable; skipping remote prewarm: {e}")
+            return
+        finally:
+            _baostock_logout()
     # Use all fundamental vars to ensure all columns are cached
     needed_vars = set(ALL_FUNDAMENTAL_NAMES) - {"dividend_yield"}  # dividend handled separately
     logger.info(f"Pre-warming fundamentals for {total} stocks ({len(needed_vars)} vars)")

@@ -7,6 +7,7 @@ baostock + akshare (free) + Parquet caching. rqdatac optional.
 
 import logging
 import os
+import socket
 import threading
 import time
 from contextlib import redirect_stdout
@@ -142,6 +143,22 @@ def _baostock_login():
     """Login to baostock, return True on success. Retries on network errors."""
     if not HAS_BAOSTOCK:
         raise RuntimeError("baostock is not installed")
+    # The baostock 0.9.x client has a bug in SocketUtil.connect(): when the
+    # endpoint cannot be reached it catches the socket error and then refers to
+    # an uninitialised ``mySockect`` variable.  Probe the endpoint ourselves so
+    # callers get a short, actionable error instead of hanging/retrying for
+    # every stock in a batch.
+    host, port = "public-api.baostock.com", 10030
+    try:
+        from baostock.common import contants as _bs_constants
+        host = _bs_constants.BAOSTOCK_SERVER_IP
+        port = _bs_constants.BAOSTOCK_SERVER_PORT
+        timeout = float(os.environ.get("QUANTGPT_BAOSTOCK_CONNECT_TIMEOUT", "5"))
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+    except Exception as e:
+        raise RuntimeError(f"baostock endpoint unavailable ({host}:{port}): {e}") from e
+
     for attempt in range(3):
         try:
             # baostock prints its login banner to stdout.  stdout is reserved
@@ -151,6 +168,10 @@ def _baostock_login():
                 lg = bs.login()
             if lg.error_code == "0":
                 return True
+            # A blacklisted/disabled anonymous account is deterministic; retrying
+            # it once per batch only magnifies prewarm and backtest latency.
+            if "黑名单" in str(lg.error_msg) or "blacklist" in str(lg.error_msg).lower():
+                raise RuntimeError(f"baostock login rejected: {lg.error_msg}")
             if attempt < 2:
                 logger.warning(f"baostock login attempt {attempt+1} failed: {lg.error_msg}, retrying...")
                 time.sleep(2 * (attempt + 1))
