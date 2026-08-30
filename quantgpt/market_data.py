@@ -143,6 +143,15 @@ def _baostock_login():
     """Login to baostock, return True on success. Retries on network errors."""
     if not HAS_BAOSTOCK:
         raise RuntimeError("baostock is not installed")
+    user_id = os.environ.get("BAOSTOCK_USER_ID", "anonymous")
+    password = os.environ.get("BAOSTOCK_PASSWORD")
+    # Keep BaoStock's documented anonymous defaults only when no account was
+    # configured. A named account without a password must fail clearly instead
+    # of accidentally trying 123456 or retrying an invalid request.
+    if password is None:
+        password = "123456" if user_id == "anonymous" else ""
+    if user_id != "anonymous" and not password:
+        raise RuntimeError("BAOSTOCK_PASSWORD is required for a named BaoStock account")
     # The baostock 0.9.x client has a bug in SocketUtil.connect(): when the
     # endpoint cannot be reached it catches the socket error and then refers to
     # an uninitialised ``mySockect`` variable.  Probe the endpoint ourselves so
@@ -169,8 +178,6 @@ def _baostock_login():
                 # for this environment.  Keep it as the default for backwards
                 # compatibility, but allow licensed credentials/API keys via
                 # environment variables without putting secrets in source.
-                user_id = os.environ.get("BAOSTOCK_USER_ID", "anonymous")
-                password = os.environ.get("BAOSTOCK_PASSWORD", "123456")
                 api_key = os.environ.get("BAOSTOCK_API_KEY", "")
                 if api_key and hasattr(bs, "set_API_key"):
                     bs.set_API_key(api_key)
