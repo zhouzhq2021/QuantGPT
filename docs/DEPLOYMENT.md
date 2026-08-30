@@ -90,6 +90,20 @@ Codex 配置不会复用 `DEEPSEEK_*` 凭据；未设置 `LLM_PROVIDER=codex` �
 # DATABASE_URL=postgresql+asyncpg://quantgpt:password@localhost:5433/quantgpt
 ```
 
+### 3.2.1 基本面数据源
+
+默认使用本地 Parquet 缓存，远程补抓时依次尝试 rqdatac 和 BaoStock。
+BaoStock 匿名账号可能因服务端策略被限制；如已从 BaoStock 获得授权凭据，写入 `.env`：
+
+```bash
+BAOSTOCK_USER_ID=your_user_id
+BAOSTOCK_PASSWORD=your_password
+# 如服务方提供 API Key，再填写：
+# BAOSTOCK_API_KEY=your_api_key
+```
+
+黑名单限制是服务端策略，不能通过客户端重试绕过。遇到 `10001011` 或“黑名单用户”时，应联系 BaoStock 管理员申请解封/白名单，或使用 rqdatac、TuShare 等替代数据源。
+
 ### 3.3 认证
 
 ```bash

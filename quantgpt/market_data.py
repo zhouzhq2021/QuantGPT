@@ -165,7 +165,16 @@ def _baostock_login():
             # for MCP JSON-RPC when this module runs behind the stdio server,
             # so capture the banner instead of corrupting the protocol stream.
             with redirect_stdout(StringIO()):
-                lg = bs.login()
+                # Anonymous access is currently rejected by the public service
+                # for this environment.  Keep it as the default for backwards
+                # compatibility, but allow licensed credentials/API keys via
+                # environment variables without putting secrets in source.
+                user_id = os.environ.get("BAOSTOCK_USER_ID", "anonymous")
+                password = os.environ.get("BAOSTOCK_PASSWORD", "123456")
+                api_key = os.environ.get("BAOSTOCK_API_KEY", "")
+                if api_key and hasattr(bs, "set_API_key"):
+                    bs.set_API_key(api_key)
+                lg = bs.login(user_id=user_id, password=password)
             if lg.error_code == "0":
                 return True
             # A blacklisted/disabled anonymous account is deterministic; retrying
