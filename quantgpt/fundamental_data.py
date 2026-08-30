@@ -266,27 +266,35 @@ class FundamentalDataFetcher:
 
         all_dfs = []
 
+        raw_vars = set()
+        for v in needed_vars:
+            if v in DERIVED_VARIABLES:
+                raw_vars.update(DERIVED_VARIABLES[v])
+            elif v in FUNDAMENTAL_VARIABLES:
+                raw_vars.add(v)
+
+        req_start = pd.Timestamp(start_date) - pd.Timedelta(days=365)
+        req_end = pd.Timestamp(end_date)
+
+        def _cache_complete(cached: pd.DataFrame | None) -> bool:
+            if cached is None or not all(v in cached.columns for v in raw_vars):
+                return False
+            if "stat_date" not in cached.columns or cached["stat_date"].dropna().empty:
+                return False
+            cache_min = cached["stat_date"].min()
+            cache_max = cached["stat_date"].max()
+            return bool(
+                cache_min <= req_start + pd.Timedelta(days=100)
+                and cache_max >= req_end - pd.Timedelta(days=100)
+            )
+
         # First pass: load all cached data
         to_fetch = []
         for code in stock_codes:
             cached = self._load_cache(code)
-            if cached is not None:
-                raw_vars = set()
-                for v in needed_vars:
-                    if v in DERIVED_VARIABLES:
-                        raw_vars.update(DERIVED_VARIABLES[v])
-                    elif v in FUNDAMENTAL_VARIABLES:
-                        raw_vars.add(v)
-                has_all_cols = all(v in cached.columns for v in raw_vars)
-
-                if has_all_cols:
-                    cache_min = cached["stat_date"].min()
-                    cache_max = cached["stat_date"].max()
-                    req_start = pd.Timestamp(start_date) - pd.Timedelta(days=365)
-                    req_end = pd.Timestamp(end_date)
-                    if cache_min <= req_start + pd.Timedelta(days=100) and cache_max >= req_end - pd.Timedelta(days=100):
-                        all_dfs.append(cached)
-                        continue
+            if _cache_complete(cached):
+                all_dfs.append(cached)
+                continue
             to_fetch.append((code, cached))
 
         # Second pass: fetch uncached from baostock (unless cache-only)
@@ -295,6 +303,19 @@ class FundamentalDataFetcher:
                 logger.warning(f"Cache-only mode: {len(to_fetch)} stocks fundamentals not cached, skipping fetch")
             else:
                 with _bs_lock:
+                    # Another task may have populated these files while this
+                    # task was waiting for the process-local lock. Re-read the
+                    # cache before issuing remote requests to avoid duplicates.
+                    remaining = []
+                    for code, cached in to_fetch:
+                        latest = self._load_cache(code)
+                        if _cache_complete(latest):
+                            all_dfs.append(latest)
+                        else:
+                            remaining.append((code, latest))
+                    to_fetch = remaining
+                    if not to_fetch:
+                        return pd.concat(all_dfs, ignore_index=True) if all_dfs else None
                     _baostock_login()
                     try:
                         for i, (code, cached) in enumerate(to_fetch):
