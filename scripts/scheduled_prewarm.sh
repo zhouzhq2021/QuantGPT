@@ -5,6 +5,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 UNIVERSE="${1:-hs300}"
+FUNDAMENTAL_VARS="${PREWARM_FUNDAMENTAL_VARS:-core}"
 LOG_FILE="$PROJECT_DIR/logs/scheduled_prewarm_${UNIVERSE}.log"
 mkdir -p "$PROJECT_DIR/logs"
 exec >>"$LOG_FILE" 2>&1
@@ -25,7 +26,7 @@ fi
     --skip-market \
     --skip-dividends \
     --skip-factors \
-    --fundamental-vars core \
+    --fundamental-vars "$FUNDAMENTAL_VARS" \
     --batch-size 10 \
     --pause 2
 
