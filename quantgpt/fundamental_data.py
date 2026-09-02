@@ -499,8 +499,14 @@ class FundamentalDataFetcher:
             return None
 
     def _save_dividend_cache(self, stock_code: str, df: pd.DataFrame):
-        if df is None or len(df) == 0:
+        if df is None:
             return
+        if df.empty:
+            df = pd.DataFrame({
+                "stock_code": pd.Series(dtype="string"),
+                "ex_date": pd.Series(dtype="datetime64[ns]"),
+                "cash_per_share": pd.Series(dtype="float64"),
+            })
         try:
             df.to_parquet(self._dividend_cache_path(stock_code), index=False)
         except Exception as e:
@@ -517,10 +523,12 @@ class FundamentalDataFetcher:
         end_year = dt.strptime(end_date[:10], "%Y-%m-%d").year
 
         rows = []
+        completed_query = False
         for year in range(start_year, end_year + 1):
             rs = bs.query_dividend_data(code=code, year=str(year), yearType="report")
             if rs.error_code != "0":
                 continue
+            completed_query = True
             while rs.next():
                 row = rs.get_row_data()
                 ex_date_str = row[6]  # dividOperateDate
@@ -539,8 +547,14 @@ class FundamentalDataFetcher:
                     "cash_per_share": cash_ps,
                 })
 
-        if not rows:
+        if not completed_query:
             return None
+        if not rows:
+            return pd.DataFrame({
+                "stock_code": pd.Series(dtype="string"),
+                "ex_date": pd.Series(dtype="datetime64[ns]"),
+                "cash_per_share": pd.Series(dtype="float64"),
+            })
         df = pd.DataFrame(rows)
         df = df.drop_duplicates(subset=["stock_code", "ex_date", "cash_per_share"])
         # Same ex_date may appear from different report years; keep one with highest amount
@@ -563,10 +577,10 @@ class FundamentalDataFetcher:
 
         for code in stock_codes:
             cached = self._load_dividend_cache(code)
-            if cached is not None and len(cached) > 0:
-                all_dfs.append(cached)
-            else:
+            if cached is None:
                 to_fetch_codes.append(code)
+            elif len(cached) > 0:
+                all_dfs.append(cached)
 
         if to_fetch_codes:
             if CACHE_ONLY:
@@ -580,9 +594,10 @@ class FundamentalDataFetcher:
                                 logger.info(f"Fetching dividends: {i+1}/{len(to_fetch_codes)}")
                             try:
                                 div_df = self._fetch_stock_dividends(code, start_date, end_date)
-                                if div_df is not None and len(div_df) > 0:
+                                if div_df is not None:
                                     self._save_dividend_cache(code, div_df)
-                                    all_dfs.append(div_df)
+                                    if len(div_df) > 0:
+                                        all_dfs.append(div_df)
                             except Exception as e:
                                 logger.warning(f"Failed to fetch dividends for {code}: {e}")
                     finally:
@@ -969,4 +984,7 @@ def enrich_market_data(
         div_df = fetcher.fetch_dividend_data(stock_codes, start_date, end_date)
         if div_df is not None and len(div_df) > 0:
             market_df = fetcher.align_dividends_to_daily(div_df, market_df)
+        else:
+            market_df = market_df.copy()
+            market_df["dividend_yield"] = np.nan
     return market_df

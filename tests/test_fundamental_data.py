@@ -192,6 +192,24 @@ class TestFundamentalRefresh:
         assert calls == ["sh.600000"]
 
 
+class TestDividendCache:
+    def test_empty_dividend_cache_prevents_remote_refetch(self, tmp_path, monkeypatch):
+        from quantgpt.fundamental_data import FundamentalDataFetcher
+
+        fetcher = FundamentalDataFetcher()
+        monkeypatch.setattr(fetcher, "_dividend_cache_dir", lambda: tmp_path)
+        fetcher._save_dividend_cache("sh.600000", pd.DataFrame())
+        monkeypatch.setattr(
+            fetcher,
+            "_fetch_stock_dividends",
+            lambda *args: pytest.fail("empty local cache must not be fetched again"),
+        )
+
+        result = fetcher.fetch_dividend_data(["sh.600000"], "2023-01-01", "2023-12-31")
+
+        assert result is None
+
+
 # ─── _quarter_range ──────────────────────────────────────────────
 
 class TestQuarterRange:
