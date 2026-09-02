@@ -8,6 +8,8 @@ from quantgpt.fundamental_data import (
     ALL_FUNDAMENTAL_NAMES,
     DERIVED_VARIABLES,
     FUNDAMENTAL_VARIABLES,
+    _coalesce_fundamental_rows,
+    _merge_fundamental_cache,
     _quarter_range,
     detect_fundamental_vars,
     enrich_market_data,
@@ -120,6 +122,45 @@ class TestGetNeededApis:
     def test_cash_flow_vars(self):
         apis = get_needed_apis({"cfo_to_np"})
         assert apis == {"cash_flow"}
+
+
+class TestFundamentalCacheMerge:
+    def test_staged_api_fetches_keep_existing_columns(self):
+        existing = pd.DataFrame({
+            "stock_code": ["sh.600000"],
+            "pub_date": ["2024-04-30"],
+            "stat_date": ["2024-03-31"],
+            "roe": [10.0],
+            "net_profit": [100.0],
+        })
+        fetched = pd.DataFrame({
+            "stock_code": ["sh.600000"],
+            "pub_date": ["2024-04-30"],
+            "stat_date": ["2024-03-31"],
+            "debt_ratio": [55.0],
+        })
+
+        merged = _merge_fundamental_cache(existing, fetched)
+
+        assert len(merged) == 1
+        assert merged.loc[0, "roe"] == 10.0
+        assert merged.loc[0, "net_profit"] == 100.0
+        assert merged.loc[0, "debt_ratio"] == 55.0
+
+    def test_endpoint_rows_with_different_publication_dates_coalesce(self):
+        endpoint_rows = pd.DataFrame({
+            "stock_code": ["sh.600000", "sh.600000"],
+            "pub_date": ["2024-04-29", "2024-04-30"],
+            "stat_date": ["2024-03-31", "2024-03-31"],
+            "roe": [10.0, np.nan],
+            "asset_turnover": [np.nan, 0.7],
+        })
+
+        merged = _coalesce_fundamental_rows(endpoint_rows)
+
+        assert len(merged) == 1
+        assert merged.loc[0, "roe"] == 10.0
+        assert merged.loc[0, "asset_turnover"] == 0.7
 
 
 # ─── _quarter_range ──────────────────────────────────────────────

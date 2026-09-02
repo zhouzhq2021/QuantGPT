@@ -127,6 +127,31 @@ def _quarter_range(start_date: str, end_date: str) -> list[tuple[int, int]]:
     return quarters
 
 
+def _merge_fundamental_cache(existing: pd.DataFrame, fetched: pd.DataFrame) -> pd.DataFrame:
+    """Merge staged API results without discarding columns from earlier runs.
+
+    BaoStock exposes financial statements through separate endpoints.  A later
+    run for (for example) balance-sheet variables therefore contains nulls for
+    profit variables already cached for the same report date.  ``groupby.last``
+    keeps the newest non-null value in every column after sorting the versions
+    chronologically.
+    """
+    combined = pd.concat([existing, fetched], ignore_index=True, sort=False)
+    return _coalesce_fundamental_rows(combined)
+
+
+def _coalesce_fundamental_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Collapse endpoint-specific rows into one row per reporting period."""
+    result = df.copy()
+    result["pub_date"] = pd.to_datetime(result["pub_date"], errors="coerce")
+    result["stat_date"] = pd.to_datetime(result["stat_date"], errors="coerce")
+    result = result.dropna(subset=["pub_date", "stat_date"])
+    result = result.sort_values(
+        ["stock_code", "stat_date", "pub_date"], kind="stable"
+    )
+    return result.groupby(["stock_code", "stat_date"], as_index=False, sort=False).last()
+
+
 class FundamentalDataFetcher:
     """Quarterly financial data fetcher with per-stock Parquet caching."""
 
@@ -214,14 +239,10 @@ class FundamentalDataFetcher:
         if not merged_parts:
             return None
 
-        # Merge all API results on (code, pubDate, statDate)
-        result = merged_parts[0]
-        for part in merged_parts[1:]:
-            # Avoid duplicate columns in merge
-            merge_on = ["code", "pubDate", "statDate"]
-            extra_cols = [c for c in part.columns if c not in result.columns]
-            if extra_cols:
-                result = result.merge(part[merge_on + extra_cols], on=merge_on, how="outer")
+        # Endpoints may publish the same reporting period on different dates.
+        # Keep their rows separate here, then coalesce by report date after
+        # normalizing names below so no endpoint's columns are dropped.
+        result = pd.concat(merged_parts, ignore_index=True, sort=False)
 
         # Rename columns to user-facing names
         rename_map = {"pubDate": "pub_date", "statDate": "stat_date", "code": "stock_code"}
@@ -240,13 +261,7 @@ class FundamentalDataFetcher:
         result["pub_date"] = pd.to_datetime(result["pub_date"], errors="coerce")
         result["stat_date"] = pd.to_datetime(result["stat_date"], errors="coerce")
 
-        # Drop rows with no pub_date (unusable)
-        result = result.dropna(subset=["pub_date"])
-
-        # Deduplicate on (stock_code, stat_date), keep latest pub_date
-        result = result.sort_values("pub_date").drop_duplicates(
-            subset=["stock_code", "stat_date"], keep="last"
-        )
+        result = _coalesce_fundamental_rows(result)
 
         return result if len(result) > 0 else None
 
@@ -325,11 +340,7 @@ class FundamentalDataFetcher:
                                 stock_df = self._fetch_stock(code, start_date, end_date, needed_apis)
                                 if stock_df is not None and len(stock_df) > 0:
                                     if cached is not None:
-                                        combined = pd.concat([cached, stock_df], ignore_index=True)
-                                        combined = combined.sort_values("pub_date").drop_duplicates(
-                                            subset=["stock_code", "stat_date"], keep="last"
-                                        )
-                                        stock_df = combined
+                                        stock_df = _merge_fundamental_cache(cached, stock_df)
                                     self._save_cache(code, stock_df)
                                     all_dfs.append(stock_df)
                             except Exception as e:
