@@ -271,6 +271,7 @@ class FundamentalDataFetcher:
         start_date: str,
         end_date: str,
         needed_vars: set[str],
+        force_refresh: bool = False,
     ) -> pd.DataFrame | None:
         """Fetch fundamental data for multiple stocks with caching."""
         needed_apis = get_needed_apis(needed_vars)
@@ -307,7 +308,7 @@ class FundamentalDataFetcher:
         to_fetch = []
         for code in stock_codes:
             cached = self._load_cache(code)
-            if _cache_complete(cached):
+            if not force_refresh and _cache_complete(cached):
                 all_dfs.append(cached)
                 continue
             to_fetch.append((code, cached))
@@ -324,7 +325,7 @@ class FundamentalDataFetcher:
                     remaining = []
                     for code, cached in to_fetch:
                         latest = self._load_cache(code)
-                        if _cache_complete(latest):
+                        if not force_refresh and _cache_complete(latest):
                             all_dfs.append(latest)
                         else:
                             remaining.append((code, latest))

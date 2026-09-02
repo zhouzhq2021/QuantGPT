@@ -109,6 +109,7 @@ def prewarm_fundamentals(
     needed_vars: set[str],
     batch_size: int = 10,
     pause_seconds: float = 2.0,
+    force_refresh: bool = False,
 ):
     """Cache fundamental data for all stocks."""
     from quantgpt.fundamental_data import FundamentalDataFetcher
@@ -125,12 +126,15 @@ def prewarm_fundamentals(
             return
         finally:
             _baostock_logout()
-    logger.info(f"Pre-warming fundamentals for {total} stocks ({len(needed_vars)} vars)")
+    mode = " (force refresh)" if force_refresh else ""
+    logger.info(f"Pre-warming fundamentals for {total} stocks ({len(needed_vars)} vars){mode}")
 
     for i in range(0, total, batch_size):
         batch = stock_codes[i:i + batch_size]
         try:
-            df = fetcher.fetch_fundamentals(batch, START_DATE, END_DATE, needed_vars)
+            df = fetcher.fetch_fundamentals(
+                batch, START_DATE, END_DATE, needed_vars, force_refresh=force_refresh
+            )
             n = df["stock_code"].nunique() if df is not None else 0
             logger.info(f"Fundamentals batch {i//batch_size + 1}: {n}/{len(batch)} stocks ({i+len(batch)}/{total} total)")
             if i + len(batch) < total and pause_seconds > 0:
@@ -168,6 +172,11 @@ def main():
     parser.add_argument("--skip-fundamentals", action="store_true")
     parser.add_argument("--skip-dividends", action="store_true")
     parser.add_argument("--skip-factors", action="store_true")
+    parser.add_argument(
+        "--refresh-fundamentals",
+        action="store_true",
+        help="Re-fetch requested fundamental APIs even when their cache columns exist",
+    )
     parser.add_argument("--batch-size", type=int, default=10, help="Stocks per remote batch (default: 10)")
     parser.add_argument("--pause", type=float, default=2.0, help="Seconds between remote batches (default: 2)")
     parser.add_argument(
@@ -250,7 +259,13 @@ def main():
     # Step 5: Fundamental data (baostock quarterly)
     if not args.skip_fundamentals:
         logger.info("--- Step 5: Fundamental data (baostock) ---")
-        prewarm_fundamentals(stock_codes, fundamental_vars, args.batch_size, args.pause)
+        prewarm_fundamentals(
+            stock_codes,
+            fundamental_vars,
+            args.batch_size,
+            args.pause,
+            force_refresh=args.refresh_fundamentals,
+        )
     else:
         logger.info("--- Step 5: Fundamental data (SKIPPED) ---")
 

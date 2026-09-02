@@ -163,6 +163,35 @@ class TestFundamentalCacheMerge:
         assert merged.loc[0, "asset_turnover"] == 0.7
 
 
+class TestFundamentalRefresh:
+    def test_force_refresh_bypasses_complete_cache(self, tmp_path, monkeypatch):
+        from quantgpt.fundamental_data import FundamentalDataFetcher
+
+        fetcher = FundamentalDataFetcher()
+        fetcher.cache_dir = tmp_path
+        cached = pd.DataFrame({
+            "stock_code": ["sh.600000"],
+            "pub_date": ["2024-04-30"],
+            "stat_date": ["2024-03-31"],
+            "roe": [10.0],
+        })
+        fetcher._save_cache("sh.600000", cached)
+        calls = []
+        monkeypatch.setattr("quantgpt.market_data._baostock_login", lambda: True)
+        monkeypatch.setattr("quantgpt.market_data._baostock_logout", lambda: None)
+        monkeypatch.setattr(
+            fetcher,
+            "_fetch_stock",
+            lambda *args: calls.append(args[0]) or cached,
+        )
+
+        fetcher.fetch_fundamentals(
+            ["sh.600000"], "2024-01-01", "2024-12-31", {"roe"}, force_refresh=True
+        )
+
+        assert calls == ["sh.600000"]
+
+
 # ─── _quarter_range ──────────────────────────────────────────────
 
 class TestQuarterRange:

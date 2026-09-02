@@ -9,6 +9,7 @@ FUNDAMENTAL_VARS="${PREWARM_FUNDAMENTAL_VARS:-core}"
 SKIP_FUNDAMENTALS="${PREWARM_SKIP_FUNDAMENTALS:-0}"
 INCLUDE_DIVIDENDS="${PREWARM_INCLUDE_DIVIDENDS:-0}"
 SKIP_MARKET="${PREWARM_SKIP_MARKET:-1}"
+REFRESH_FUNDAMENTALS="${PREWARM_REFRESH_FUNDAMENTALS:-0}"
 LOG_FILE="$PROJECT_DIR/logs/scheduled_prewarm_${UNIVERSE}.log"
 mkdir -p "$PROJECT_DIR/logs"
 exec >>"$LOG_FILE" 2>&1
@@ -37,6 +38,9 @@ if [ "$SKIP_FUNDAMENTALS" = "1" ]; then
     ARGS+=(--skip-fundamentals)
 else
     ARGS+=(--fundamental-vars "$FUNDAMENTAL_VARS")
+    if [ "$REFRESH_FUNDAMENTALS" = "1" ]; then
+        ARGS+=(--refresh-fundamentals)
+    fi
 fi
 if [ "$INCLUDE_DIVIDENDS" != "1" ]; then
     ARGS+=(--skip-dividends)
